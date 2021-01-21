@@ -1,8 +1,12 @@
-.PHONY: all
+.PHONY: all clean
 
 verilator_base=/usr/share/verilator
 
 all: sim
+
+clean:
+	rm -r cpu_cc
+	rm sim
 
 cpu_cc: cpu.v
 	verilator cpu.v --Mdir $@ --cc --debug
