@@ -7,15 +7,13 @@ uint64_t main_time = 0;
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     auto top = new Vcpu();
-    top->x = 1;
-    top->y = 2;
     while (!Verilated::gotFinish()) {
+        top->clock = !top->clock;
         top->eval();            // Evaluate model
         //std::cout << top->out << endl;       // Read a output
         main_time++;            // Time passes...
-        if (main_time > 10)
+        if (main_time > 100)
         {
-            printf("%d\n", top->z);
             break;
         }
     }
