@@ -113,6 +113,9 @@ module decoder(
     output reg [31:0] op1_reg,
     output reg [31:0] op2_reg,
     output reg [2:0] ctrl_alu_func_reg,
+    output reg ctrl_is_nop_reg,
+    output reg ctrl_shift_sign_reg,
+    output reg ctrl_wb_reg,
     output [31:0] pc_jump_target,
     output ctrl_is_jump,
     output ctrl_decoder_stall
@@ -128,9 +131,10 @@ module decoder(
     //          ^
     //          |____ sign
 
+    reg ctrl_skip_next_reg;
     wire [6:0] opcode = inst[6:0];
     wire [2:0] funct3 = inst[14:12];
-    wire [6:0] funct7 = inst[31:25];
+    //wire [6:0] funct7 = inst[31:25];
     wire [4:0] rs1 = inst[19:15];
     wire [4:0] rs2 = inst[24:20];
     wire [4:0] rd = inst[11:7];
@@ -142,7 +146,8 @@ module decoder(
     wire [11:0] l_offset = inst[31:20];
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
     wire shift_sign = inst[31:25] == 'b0100000;
-    wire is_nop = opcode == `XXXI && funct3 == `FADDI && inst[31:15] == 0 && rd == 0;
+    wire is_nop = 
+        (opcode == `XXXI && funct3 == `FADDI && inst[31:15] == 0 && rd == 0) || ctrl_skip_next_reg;
     // wire to read from register file
     assign reg1_raddr = rs1;
     assign reg2_raddr = rs2;
@@ -167,21 +172,44 @@ module decoder(
                 `XXXI: begin
                     op1_reg <= reg1_rdata;
                     op2_reg <= xxxi;
+                    ctrl_alu_func_reg <= funct3;
+                    ctrl_wb_reg <= 1;
                 end
                 `XXX: begin
                     op1_reg <= reg1_rdata;
                     op2_reg <= reg2_rdata;
+                    ctrl_alu_func_reg <= funct3;
+                    ctrl_wb_reg <= 1;
                 end
-                `LUI: op1_reg <= lui;
-                `AUIPC: op1_reg <= lui;
+                `LUI: begin
+                    op1_reg <= lui;
+                    op2_reg <= 0;
+                    ctrl_alu_func_reg <= `FADDI;
+                    ctrl_wb_reg <= 1;
+                end
+                `AUIPC: begin
+                    op1_reg <= lui;
+                    op2_reg <= pc;
+                    ctrl_alu_func_reg <= `FADDI;
+                    ctrl_wb_reg <= 1;
+                end
                 `LX: begin
-                    op1_reg <= reg1_rdata + {{20{l_offset[11]}}, l_offset};
+                    op1_reg <= reg1_rdata;
+                    op2_reg <= {{20{l_offset[11]}}, l_offset};
+                    ctrl_alu_func_reg <= `FADDI;
+                    ctrl_wb_reg <= 1;
                 end
                 `SX: begin
-                    op1_reg <= reg1_rdata + {{20{s_offset[11]}}, s_offset};
+                    op1_reg <= reg1_rdata;
+                    op2_reg <= {{20{s_offset[11]}}, s_offset};
+                    ctrl_alu_func_reg <= `FADDI;
+                    ctrl_wb_reg <= 0;
                 end
                 default:;
             endcase
+            ctrl_skip_next_reg <= ctrl_is_jump;
+            ctrl_is_nop_reg <= is_nop;
+            ctrl_shift_sign_reg <= shift_sign;
         end
     end
 
@@ -270,18 +298,21 @@ module pipeline (
     decoder decode_stage(
         .inst(inst_reg_decode),
         .pc(pc_reg_decode),
-        .pc_jump_target(pc_jump_target),
         .reg1_raddr(reg1_raddr),
         .reg2_raddr(reg2_raddr),
         .reg1_rdata(reg1_rdata),
         .reg2_rdata(reg2_rdata),
         .ctrl_clk(clock),
         .ctrl_stall(ctrl_stall),
-        .ctrl_decoder_stall(ctrl_decoder_stall),
-        .ctrl_is_jump(ctrl_is_jump),
         .op1_reg(),
         .op2_reg(),
-        .ctrl_alu_func_reg()
+        .ctrl_alu_func_reg(),
+        .ctrl_is_nop_reg(),
+        .ctrl_shift_sign_reg(),
+        .ctrl_wb_reg(),
+        .pc_jump_target(pc_jump_target),
+        .ctrl_is_jump(ctrl_is_jump),
+        .ctrl_decoder_stall(ctrl_decoder_stall)
     );
 
     executor execute_stage(
