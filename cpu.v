@@ -12,7 +12,6 @@ module cpu(
     input [31:0] data_in,
     output [31:0] data_out
 );
-    initial $display("Testing pipeline.");
     pipeline pl (
         clock,
         reset,
