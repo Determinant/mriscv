@@ -9,7 +9,7 @@ clean:
 	rm sim
 
 cpu_cc: cpu.v pipeline.v
-	verilator cpu.v --Mdir $@ --cc --debug
+	verilator cpu.v --Mdir $@ --cc --debug -Wall -Wno-style
 cpu_cc/Vcpu__ALL.a: cpu_cc
 	make -C cpu_cc -f Vcpu.mk
 sim: sim.cpp cpu_cc/Vcpu__ALL.a

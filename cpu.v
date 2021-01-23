@@ -1,26 +1,26 @@
 `include "pipeline.v"
 module cpu(
     input clock,
-    input reset,
-    input halt,
-    input irq,
 
-    output [31:0] inst_addr,
-    input [31:0] inst_data,
+    output [31:0] icache_addr,
+    input [31:0] icache_data,
+    input icache_rdy,
 
-    output [31:0] data_addr,
-    input [31:0] data_in,
-    output [31:0] data_out
+    output [31:0] dcache_addr,
+    input [31:0] dcache_rdata,
+    output [31:0] dcache_wdata,
+    input dcache_rdy,
+    output dcache_wen
 );
     pipeline pl (
         clock,
-        reset,
-        halt,
-        irq,
-        inst_addr,
-        inst_data,
-        data_addr,
-        data_in,
-        data_out
+        icache_addr,
+        icache_data,
+        icache_rdy,
+        dcache_addr,
+        dcache_rdata,
+        dcache_wdata,
+        dcache_rdy,
+        dcache_wen
     );
 endmodule
