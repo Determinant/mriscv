@@ -91,7 +91,7 @@ module fetcher(
     output ctrl_fetcher_stall
 );
     assign icache_addr = pc_in;
-    assign ctrl_fetcher_stall = icache_rdy;
+    assign ctrl_fetcher_stall = !icache_rdy;
     always_ff @ (posedge ctrl_clk) begin
         if (!ctrl_stall) begin
             inst <= icache_data;
@@ -112,9 +112,12 @@ module decoder(
 
     output reg [31:0] op1_reg,
     output reg [31:0] op2_reg,
+    output reg [4:0] rd_reg,
+    output reg [31:0] src_reg,
     output reg [2:0] ctrl_alu_func_reg,
     output reg ctrl_is_nop_reg,
     output reg ctrl_wb_reg,
+    output reg [1:0] ctrl_mem_reg,
     output [31:0] ctrl_pc_jump_target,
     output ctrl_is_jump,
     output ctrl_decoder_stall
@@ -172,39 +175,50 @@ module decoder(
                     op2_reg <= xxxi;
                     ctrl_alu_func_reg <= funct3;
                     ctrl_wb_reg <= 1;
+                    ctrl_mem_reg <= 2'b00;
                 end
                 `XXX: begin
                     op1_reg <= reg1_rdata;
                     op2_reg <= reg2_rdata;
                     ctrl_alu_func_reg <= funct3;
                     ctrl_wb_reg <= 1;
+                    ctrl_mem_reg <= 2'b00;
                 end
                 `LUI: begin
                     op1_reg <= lui;
                     op2_reg <= 0;
                     ctrl_alu_func_reg <= `FADDI;
                     ctrl_wb_reg <= 1;
+                    ctrl_mem_reg <= 2'b00;
                 end
                 `AUIPC: begin
                     op1_reg <= lui;
                     op2_reg <= pc;
                     ctrl_alu_func_reg <= `FADDI;
                     ctrl_wb_reg <= 1;
+                    ctrl_mem_reg <= 2'b00;
                 end
                 `LX: begin
                     op1_reg <= reg1_rdata;
                     op2_reg <= {{20{l_offset[11]}}, l_offset};
                     ctrl_alu_func_reg <= `FADDI;
                     ctrl_wb_reg <= 1;
+                    ctrl_mem_reg <= 2'b10;
                 end
                 `SX: begin
                     op1_reg <= reg1_rdata;
                     op2_reg <= {{20{s_offset[11]}}, s_offset};
+                    src_reg <= reg2_rdata;
                     ctrl_alu_func_reg <= `FADDI;
                     ctrl_wb_reg <= 0;
+                    ctrl_mem_reg <= 2'b11;
                 end
-                default:;
+                default: begin
+                    ctrl_wb_reg <= 0;
+                    ctrl_mem_reg <= 2'b00;
+                end
             endcase
+            rd_reg <= rd;
             ctrl_skip_next_reg <= ctrl_is_jump;
             ctrl_is_nop_reg <= is_nop;
         end
@@ -216,14 +230,21 @@ endmodule
 module executor(
     input [31:0] op1,
     input [31:0] op2,
+    input [31:0] src,
+    input [4:0] rd,
     input ctrl_clk,
     input ctrl_stall,
     input [2:0] ctrl_alu_func,
     input ctrl_is_nop,
     input ctrl_wb,
+    input [1:0] ctrl_mem,
 
     output reg [31:0] res_reg,
-    output reg ctrl_wb_reg
+    output reg [31:0] src_reg,
+    output reg [4:0] rd_reg,
+    output reg ctrl_is_nop_reg,
+    output reg ctrl_wb_reg,
+    output reg [1:0] ctrl_mem_reg
 );
     always_ff @ (posedge ctrl_clk) begin
         if (!ctrl_stall && !ctrl_is_nop) begin
@@ -237,9 +258,75 @@ module executor(
                 `FSLLI: res_reg <= op1 << op2[4:0];
                 `FSRXI: res_reg <= op2[10] == 0 ? op1 >> op2[4:0] : $signed(op1) >> op2[4:0];
             endcase
+            src_reg <= src;
+            rd_reg <= rd;
+            ctrl_is_nop_reg <= ctrl_is_nop;
+            ctrl_wb_reg <= ctrl_wb;
+            ctrl_mem_reg <= ctrl_mem;
+        end
+    end
+endmodule
+
+module memory(
+    input [31:0] res_alu,
+    input [31:0] src,
+    input [4:0] rd,
+
+    output [31:0] dcache_addr,
+    input [31:0] dcache_rdata,
+    output [31:0] dcache_wdata,
+    input dcache_rdy,
+    output dcache_en,
+    output dcache_wr,
+
+    input ctrl_clk,
+    input ctrl_stall,
+    input ctrl_wb,
+    input ctrl_is_nop,
+    input [1:0] ctrl_mem,
+
+    output reg [31:0] res_reg,
+    output reg [4:0] rd_reg,
+    output reg ctrl_is_nop_reg,
+    output reg ctrl_wb_reg,
+    output ctrl_mem_stall
+);
+    assign dcache_en = ctrl_mem[1];
+    assign dcache_wr = ctrl_mem[0];
+    assign dcache_wdata = src;
+    assign dcache_addr = res_alu;
+    assign ctrl_mem_stall = !dcache_rdy;
+    always_ff @ (posedge ctrl_clk) begin
+        if (!ctrl_stall && !ctrl_is_nop) begin
+            if (ctrl_mem[1] == 1) begin
+                if (ctrl_mem[0] == 0) begin
+                    res_reg <= dcache_rdata;
+                end
+            else
+                res_reg <= res_alu;
+            end
+            rd_reg <= rd;
+            ctrl_is_nop_reg <= ctrl_is_nop;
             ctrl_wb_reg <= ctrl_wb;
         end
     end
+endmodule
+
+module writeback(
+    input [31:0] res,
+    input [4:0] rd,
+    input ctrl_clk,
+    input ctrl_stall,
+    input ctrl_wb,
+    input ctrl_is_nop,
+
+    output [4:0] reg_waddr,
+    output [31:0] reg_wdata,
+    output reg_wen
+);
+    assign reg_waddr = rd;
+    assign reg_wdata = res;
+    assign reg_wen = !ctrl_stall && !ctrl_is_nop && ctrl_wb;
 endmodule
 
 module pipeline (
@@ -253,7 +340,8 @@ module pipeline (
     input [31:0] dcache_rdata,
     output [31:0] dcache_wdata,
     input dcache_rdy,
-    output dcache_wen
+    output dcache_en,
+    output dcache_wr
 );
     // program counter
 
@@ -288,15 +376,18 @@ module pipeline (
     wire [4:0] reg2_raddr;
     wire [31:0] reg1_rdata;
     wire [31:0] reg2_rdata;
+    wire [4:0] reg_waddr;
+    wire [31:0] reg_wdata;
+    wire reg_wen;
 
     register_file main_reg(
         .reg1_raddr(reg1_raddr),
         .reg2_raddr(reg2_raddr),
         .reg1_rdata(reg1_rdata),
         .reg2_rdata(reg2_rdata),
-        .reg_waddr(),
-        .reg_wdata(),
-        .reg_wen(),
+        .reg_waddr(reg_waddr),
+        .reg_wdata(reg_wdata),
+        .reg_wen(reg_wen),
         .ctrl_clk(clock)
     );
 
@@ -314,9 +405,12 @@ module pipeline (
 
     wire [31:0] op1;
     wire [31:0] op2;
+    wire [31:0] src_decode;
+    wire [4:0] rd_decode;
     wire [2:0] ctrl_alu_func;
-    wire ctrl_is_nop;
+    wire ctrl_is_nop_decode;
     wire ctrl_wb_decode;
+    wire [1:0] ctrl_mem_decode;
 
     decoder decode_stage(
         .inst(inst_reg_decode),
@@ -329,27 +423,80 @@ module pipeline (
         .ctrl_stall(ctrl_stall),
         .op1_reg(op1),
         .op2_reg(op2),
+        .src_reg(src_decode),
+        .rd_reg(rd_decode),
         .ctrl_alu_func_reg(ctrl_alu_func),
-        .ctrl_is_nop_reg(ctrl_is_nop),
+        .ctrl_is_nop_reg(ctrl_is_nop_decode),
         .ctrl_wb_reg(ctrl_wb_decode),
+        .ctrl_mem_reg(ctrl_mem_decode),
         .ctrl_pc_jump_target(pc_jump_target),
         .ctrl_is_jump(ctrl_is_jump),
         .ctrl_decoder_stall(ctrl_decoder_stall)
     );
 
     wire [31:0] res;
+    wire [31:0] src_execute;
+    wire [4:0] rd_execute;
+    wire ctrl_is_nop_execute;
     wire ctrl_wb_execute;
+    wire [1:0] ctrl_mem_execute;
 
     executor execute_stage(
         .op1(op1),
         .op2(op2),
+        .src(src_decode),
+        .rd(rd_decode),
         .ctrl_clk(clock),
         .ctrl_stall(ctrl_stall),
         .ctrl_alu_func(ctrl_alu_func),
-        .ctrl_is_nop(ctrl_is_nop),
+        .ctrl_is_nop(ctrl_is_nop_decode),
         .ctrl_wb(ctrl_wb_decode),
+        .ctrl_mem(ctrl_mem_decode),
         .res_reg(res),
-        .ctrl_wb_reg(ctrl_wb_execute)
+        .src_reg(src_execute),
+        .ctrl_is_nop_reg(ctrl_is_nop_execute),
+        .ctrl_wb_reg(ctrl_wb_execute),
+        .ctrl_mem_reg(ctrl_mem_execute),
+        .rd_reg(rd_execute)
+    );
+
+    wire [4:0] rd_mem;
+    wire [31:0] res_mem;
+    wire ctrl_is_nop_mem;
+    wire ctrl_wb_mem;
+
+    memory mem_stage(
+        .res_alu(res),
+        .src(src_execute),
+        .rd(rd_execute),
+        .dcache_addr(dcache_addr),
+        .dcache_rdata(dcache_rdata),
+        .dcache_wdata(dcache_wdata),
+        .dcache_rdy(dcache_rdy),
+        .dcache_en(dcache_en),
+        .dcache_wr(dcache_wr),
+        .ctrl_clk(clock),
+        .ctrl_stall(ctrl_stall),
+        .ctrl_is_nop(ctrl_is_nop_execute),
+        .ctrl_wb(ctrl_wb_execute),
+        .ctrl_mem(ctrl_mem_execute),
+        .res_reg(res_mem),
+        .rd_reg(rd_mem),
+        .ctrl_is_nop_reg(ctrl_is_nop_mem),
+        .ctrl_wb_reg(ctrl_wb_mem),
+        .ctrl_mem_stall(ctrl_mem_stall)
+    );
+
+    writeback wb_stage(
+        .res(res_mem),
+        .rd(rd_mem),
+        .ctrl_clk(clock),
+        .ctrl_stall(ctrl_stall),
+        .ctrl_wb(ctrl_wb_mem),
+        .ctrl_is_nop(ctrl_is_nop_mem),
+        .reg_waddr(reg_waddr),
+        .reg_wdata(reg_wdata),
+        .reg_wen(reg_wen)
     );
 
     always_ff @ (posedge clock) begin

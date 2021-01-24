@@ -10,7 +10,8 @@ module cpu(
     input [31:0] dcache_rdata,
     output [31:0] dcache_wdata,
     input dcache_rdy,
-    output dcache_wen
+    output dcache_en,
+    output dcache_wr
 );
     pipeline pl (
         clock,
@@ -21,6 +22,7 @@ module cpu(
         dcache_rdata,
         dcache_wdata,
         dcache_rdy,
-        dcache_wen
+        dcache_en,
+        dcache_wr
     );
 endmodule
