@@ -213,6 +213,14 @@ module decoder(
                     ctrl_wb_reg <= 0;
                     ctrl_mem_reg <= 2'b11;
                 end
+                `JAL, `JALR: begin
+                    op1_reg <= pc;
+                    op2_reg <= 4;
+                    ctrl_alu_func_reg <= `FADD;
+                    ctrl_alu_sign_ext_reg <= 0;
+                    ctrl_wb_reg <= 1;
+                    ctrl_mem_reg <= 2'b00;
+                end
                 default: begin
                     ctrl_wb_reg <= 0;
                     ctrl_mem_reg <= 2'b00;
