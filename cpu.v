@@ -1,6 +1,7 @@
 `include "pipeline.v"
 module cpu(
     input clock,
+    input reset,
 
     output [31:0] icache_addr,
     input [31:0] icache_data,
@@ -15,6 +16,7 @@ module cpu(
 );
     pipeline pl (
         clock,
+        reset,
         icache_addr,
         icache_data,
         icache_rdy,
