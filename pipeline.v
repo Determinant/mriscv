@@ -64,14 +64,14 @@ endmodule
 function is_stall (
     input ctrl_fetcher_stall,
     input ctrl_decoder_stall,
-    input ctrl_executer_stall,
+    input ctrl_executor_stall,
     input ctrl_mem_stall,
     input ctrl_writeback_stall,
 );
     is_stall =
         ctrl_fetcher_stall ||
         ctrl_decoder_stall ||
-        ctrl_executer_stall ||
+        ctrl_executor_stall ||
         ctrl_mem_stall ||
         ctrl_writeback_stall;
 endfunction
@@ -114,9 +114,8 @@ module decoder(
     output reg [31:0] op2_reg,
     output reg [2:0] ctrl_alu_func_reg,
     output reg ctrl_is_nop_reg,
-    output reg ctrl_shift_sign_reg,
     output reg ctrl_wb_reg,
-    output [31:0] pc_jump_target,
+    output [31:0] ctrl_pc_jump_target,
     output ctrl_is_jump,
     output ctrl_decoder_stall
 );
@@ -145,13 +144,12 @@ module decoder(
     wire [12:0] b_offset = {inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
     wire [11:0] l_offset = inst[31:20];
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
-    wire shift_sign = inst[31:25] == 'b0100000;
     wire is_nop = 
         (opcode == `XXXI && funct3 == `FADDI && inst[31:15] == 0 && rd == 0) || ctrl_skip_next_reg;
     // wire to read from register file
     assign reg1_raddr = rs1;
     assign reg2_raddr = rs2;
-    assign pc_jump_target = opcode == `JAL ?
+    assign ctrl_pc_jump_target = opcode == `JAL ?
                             pc + {{11{jal_offset[20]}}, jal_offset} :
                             opcode == `JALR ?
                             reg1_rdata + {{20{jalr_offset[11]}}, jalr_offset}:
@@ -209,7 +207,6 @@ module decoder(
             endcase
             ctrl_skip_next_reg <= ctrl_is_jump;
             ctrl_is_nop_reg <= is_nop;
-            ctrl_shift_sign_reg <= shift_sign;
         end
     end
 
@@ -219,10 +216,30 @@ endmodule
 module executor(
     input [31:0] op1,
     input [31:0] op2,
+    input ctrl_clk,
+    input ctrl_stall,
     input [2:0] ctrl_alu_func,
+    input ctrl_is_nop,
+    input ctrl_wb,
 
-    output reg [31:0] res_reg
+    output reg [31:0] res_reg,
+    output reg ctrl_wb_reg
 );
+    always_ff @ (posedge ctrl_clk) begin
+        if (!ctrl_stall && !ctrl_is_nop) begin
+            case (ctrl_alu_func)
+                `FADDI: res_reg <= op1 + op2;
+                `FSLTI: res_reg <= $signed(op1) < $signed(op2) ? 1 : 0;
+                `FSLTIU: res_reg <= op1 < op2 ? 1 : 0;
+                `FXORI: res_reg <= op1 ^ op2;
+                `FORI: res_reg <= op1 | op2;
+                `FANDI: res_reg <= op1 & op2;
+                `FSLLI: res_reg <= op1 << op2[4:0];
+                `FSRXI: res_reg <= op2[10] == 0 ? op1 >> op2[4:0] : $signed(op1) >> op2[4:0];
+            endcase
+            ctrl_wb_reg <= ctrl_wb;
+        end
+    end
 endmodule
 
 module pipeline (
@@ -249,13 +266,13 @@ module pipeline (
     wire ctrl_is_jump;
     wire ctrl_fetcher_stall;
     wire ctrl_decoder_stall;
-    wire ctrl_executer_stall;
+    wire ctrl_executor_stall;
     wire ctrl_mem_stall;
     wire ctrl_writeback_stall;
     wire ctrl_stall = is_stall(
         ctrl_fetcher_stall,
         ctrl_decoder_stall,
-        ctrl_executer_stall,
+        ctrl_executor_stall,
         ctrl_mem_stall,
         ctrl_writeback_stall
     );
@@ -295,6 +312,12 @@ module pipeline (
         .pc(pc_reg_decode)
     );
 
+    wire [31:0] op1;
+    wire [31:0] op2;
+    wire [2:0] ctrl_alu_func;
+    wire ctrl_is_nop;
+    wire ctrl_wb_decode;
+
     decoder decode_stage(
         .inst(inst_reg_decode),
         .pc(pc_reg_decode),
@@ -304,22 +327,29 @@ module pipeline (
         .reg2_rdata(reg2_rdata),
         .ctrl_clk(clock),
         .ctrl_stall(ctrl_stall),
-        .op1_reg(),
-        .op2_reg(),
-        .ctrl_alu_func_reg(),
-        .ctrl_is_nop_reg(),
-        .ctrl_shift_sign_reg(),
-        .ctrl_wb_reg(),
-        .pc_jump_target(pc_jump_target),
+        .op1_reg(op1),
+        .op2_reg(op2),
+        .ctrl_alu_func_reg(ctrl_alu_func),
+        .ctrl_is_nop_reg(ctrl_is_nop),
+        .ctrl_wb_reg(ctrl_wb_decode),
+        .ctrl_pc_jump_target(pc_jump_target),
         .ctrl_is_jump(ctrl_is_jump),
         .ctrl_decoder_stall(ctrl_decoder_stall)
     );
 
+    wire [31:0] res;
+    wire ctrl_wb_execute;
+
     executor execute_stage(
-        .op1(),
-        .op2(),
-        .ctrl_alu_func(),
-        .res_reg()
+        .op1(op1),
+        .op2(op2),
+        .ctrl_clk(clock),
+        .ctrl_stall(ctrl_stall),
+        .ctrl_alu_func(ctrl_alu_func),
+        .ctrl_is_nop(ctrl_is_nop),
+        .ctrl_wb(ctrl_wb_decode),
+        .res_reg(res),
+        .ctrl_wb_reg(ctrl_wb_execute)
     );
 
     always_ff @ (posedge clock) begin
