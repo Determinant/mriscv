@@ -4,27 +4,29 @@ module cpu(
     input reset,
 
     output [31:0] icache_addr,
+    output icache_req,
     input [31:0] icache_data,
     input icache_rdy,
 
     output [31:0] dcache_addr,
-    input [31:0] dcache_rdata,
     output [31:0] dcache_wdata,
-    input dcache_rdy,
-    output dcache_en,
-    output dcache_wr
+    output dcache_req,
+    output dcache_wr,
+    input [31:0] dcache_rdata,
+    input dcache_rdy
 );
     pipeline pl (
         clock,
         reset,
         icache_addr,
+        icache_req,
         icache_data,
         icache_rdy,
         dcache_addr,
-        dcache_rdata,
         dcache_wdata,
-        dcache_rdy,
-        dcache_en,
-        dcache_wr
+        dcache_req,
+        dcache_wr,
+        dcache_rdata,
+        dcache_rdy
     );
 endmodule

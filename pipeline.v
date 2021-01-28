@@ -80,6 +80,7 @@ module fetcher(
 
     // i-cache communication
     output [31:0] icache_addr,
+    output icache_req,
     input [31:0] icache_data,
     input icache_rdy,
 
@@ -90,6 +91,7 @@ module fetcher(
 );
     reg [31:0] pc;
     assign icache_addr = pc;
+    assign icache_req = 1;
     assign ctrl_fetcher_stall = !icache_rdy;
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
@@ -347,11 +349,11 @@ module memory(
 
     // d-cache communication
     output [31:0] dcache_addr,
-    input [31:0] dcache_rdata,
     output [31:0] dcache_wdata,
-    input dcache_rdy,
-    output dcache_en,
+    output dcache_req,
     output dcache_wr,
+    input [31:0] dcache_rdata,
+    input dcache_rdy,
 
     input ctrl_clk,
     input ctrl_reset,
@@ -367,7 +369,7 @@ module memory(
     output reg ctrl_wb_reg,
     output ctrl_mem_stall
 );
-    assign dcache_en = ctrl_mem[1];
+    assign dcache_req = ctrl_mem[1];
     assign dcache_wr = ctrl_mem[0];
     assign dcache_wdata = src;
     assign dcache_addr = res_alu;
@@ -383,7 +385,7 @@ module memory(
                         $time, res_alu, src, rd
                     );
                 `endif
-                if (dcache_en == 1) begin
+                if (dcache_req == 1) begin
                     if (dcache_wr == 0) begin
                         res_reg <= dcache_rdata;
                     end
@@ -426,16 +428,19 @@ module pipeline (
     input clock,
     input reset,
 
+    // i-cache communication
     output [31:0] icache_addr,
+    output icache_req,
     input [31:0] icache_data,
     input icache_rdy,
 
+    // d-cache communication
     output [31:0] dcache_addr,
-    input [31:0] dcache_rdata,
     output [31:0] dcache_wdata,
-    input dcache_rdy,
-    output dcache_en,
-    output dcache_wr
+    output dcache_req,
+    output dcache_wr,
+    input [31:0] dcache_rdata,
+    input dcache_rdy
 );
     // program counter
 
@@ -496,8 +501,9 @@ module pipeline (
         .ctrl_next_stage_stall(ctrl_decoder_stall_in),
         .ctrl_is_jump(ctrl_is_jump),
         .icache_addr(icache_addr),
-        .icache_rdy(icache_rdy),
+        .icache_req(icache_req),
         .icache_data(icache_data),
+        .icache_rdy(icache_rdy),
         .inst_reg(inst_reg_fetch),
         .pc_reg(pc_reg_fetch),
         .ctrl_is_nop_reg(ctrl_is_nop_fetch),
@@ -580,11 +586,11 @@ module pipeline (
         .src(src_exec),
         .rd(rd_exec),
         .dcache_addr(dcache_addr),
-        .dcache_rdata(dcache_rdata),
         .dcache_wdata(dcache_wdata),
-        .dcache_rdy(dcache_rdy),
-        .dcache_en(dcache_en),
+        .dcache_req(dcache_req),
         .dcache_wr(dcache_wr),
+        .dcache_rdata(dcache_rdata),
+        .dcache_rdy(dcache_rdy),
         .ctrl_clk(clock),
         .ctrl_reset(reset),
         .ctrl_stall(ctrl_mem_stall_in),
