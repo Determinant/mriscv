@@ -59,7 +59,7 @@ module fetcher(
     input [31:0] pc_jump_target,
     input ctrl_clk,
     input ctrl_reset,
-    inout ctrl_stall,
+    input ctrl_stall,
     input ctrl_next_stage_stall,
     input ctrl_is_jump,
 
