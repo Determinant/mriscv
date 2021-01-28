@@ -1,3 +1,37 @@
+// opcode
+
+`define LUI     7'b0110111
+`define AUIPC   7'b0010111
+`define JAL     7'b1101111
+`define JALR    7'b1100111
+`define BXX     7'b1100011 // BEQ, BNE, BLT, BGE, BLTU, BGEU
+`define LX      7'b0000011 // LB, LH, LW, LBU, LHU
+`define SX      7'b0100011 // SB, SH, SW
+`define XXXI    7'b0010011 // ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI
+`define XXX     7'b0110011 // ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND
+
+// the following is not supported yet
+`define FEN     7'b0001111 // FENCE
+`define EXX     7'b1110011 // ECALL, EBREAK
+
+// funct3 code
+
+`define FADD   3'b000
+`define FSLT   3'b010
+`define FSLTU  3'b011
+`define FXOR   3'b100
+`define FOR    3'b110
+`define FAND   3'b111
+`define FSLL   3'b001
+`define FSRX   3'b101 // FSRLI & SRAI
+
+`define FBEQ    3'b000
+`define FBNE    3'b001
+`define FBLT    3'b100
+`define FBGE    3'b101
+`define FBLTU   3'b110
+`define FBGEU   3'b111
+
 module register_file(
     input [4:0] reg1_raddr,
     input [4:0] reg2_raddr,
@@ -21,55 +55,12 @@ module register_file(
     end
 endmodule
 
-`define LUI     7'b0110111
-`define AUIPC   7'b0010111
-`define JAL     7'b1101111
-`define JALR    7'b1100111
-`define BXX     7'b1100011 // BEQ, BNE, BLT, BGE, BLTU, BGEU
-`define LX     7'b0000011 // LB, LH, LW, LBU, LHU
-`define SX      7'b0100011 // SB, SH, SW
-`define XXXI    7'b0010011 // ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI
-`define XXX     7'b0110011 // ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND
-
-`define FEN     7'b0001111 // FENCE
-`define EXX     7'b1110011 // ECALL, EBREAK
-
-`define FADD   3'b000
-`define FSLT   3'b010
-`define FSLTU  3'b011
-`define FXOR   3'b100
-`define FOR    3'b110
-`define FAND   3'b111
-
-`define FSLL   3'b001
-`define FSRX   3'b101 // FSRLI & SRAI
-
-`define FBEQ    3'b000
-`define FBNE    3'b001
-`define FBLT    3'b100
-`define FBGE    3'b101
-`define FBLTU   3'b110
-`define FBGEU   3'b111
-
-function is_stall (
-    input ctrl_fetcher_stall,
-    input ctrl_decoder_stall,
-    input ctrl_executor_stall,
-    input ctrl_mem_stall,
-    input ctrl_writeback_stall,
-);
-    is_stall =
-        ctrl_fetcher_stall ||
-        ctrl_decoder_stall ||
-        ctrl_executor_stall ||
-        ctrl_mem_stall ||
-        ctrl_writeback_stall;
-endfunction
-
 module fetcher(
     input [31:0] pc_jump_target,
     input ctrl_clk,
-    input ctrl_stall,
+    input ctrl_reset,
+    inout ctrl_stall,
+    input ctrl_next_stage_stall,
     input ctrl_is_jump,
 
     // i-cache communication
@@ -79,17 +70,26 @@ module fetcher(
 
     output reg [31:0] inst_reg,
     output reg [31:0] pc_reg,
+    output reg ctrl_is_nop_reg,
     output ctrl_fetcher_stall
 );
     reg [31:0] pc;
     assign icache_addr = pc;
     assign ctrl_fetcher_stall = !icache_rdy;
     always_ff @ (posedge ctrl_clk) begin
-        if (!ctrl_stall) begin
-            inst_reg <= icache_data;
-            pc_reg <= pc;
-            pc <= ctrl_is_jump ? pc_jump_target : pc + 4;
+        if (ctrl_reset) begin
+            pc <= 32'h00000000; // initialize PC to 0x00000000
+            ctrl_is_nop_reg <= 1;
         end
+        else
+            if (!ctrl_stall) begin
+                inst_reg <= icache_data;
+                pc_reg <= pc;
+                pc <= ctrl_is_jump ? pc_jump_target : pc + 4;
+                ctrl_is_nop_reg <= 0;
+            end
+            else if (!ctrl_next_stage_stall)// insert a bubble
+                ctrl_is_nop_reg <= 1;
     end
 endmodule;
 
@@ -103,6 +103,8 @@ module decoder(
     input ctrl_clk,
     input ctrl_reset,
     input ctrl_stall,
+    input ctrl_next_stage_stall,
+    input ctrl_is_nop,
 
     output reg [31:0] op1_reg,
     output reg [31:0] op2_reg,
@@ -117,6 +119,7 @@ module decoder(
     output ctrl_is_jump,
     output ctrl_decoder_stall
 );
+    assign ctrl_decoder_stall = 0;
     // Layout: [  7 bits          ][5 bits][5 bits][3 bits][ 5 bits         ][ 7 bits ]
     // R-type: [funct7            ][rs2   ][rs1   ][funct3][rd              ][opcode  ]
     //
@@ -141,7 +144,7 @@ module decoder(
     wire [12:0] b_offset = {inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
     wire [11:0] l_offset = inst[31:20];
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
-    wire is_nop = (opcode == `XXXI && inst[31:7] == 0) || ctrl_skip_next_reg;
+    wire is_nop = ctrl_is_nop || (opcode == `XXXI && inst[31:7] == 0) || ctrl_skip_next_reg;
     // wire to read from register file
     assign reg1_raddr = rs1;
     assign reg2_raddr = rs2;
@@ -161,78 +164,80 @@ module decoder(
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
             ctrl_skip_next_reg <= 0;
+            ctrl_is_nop_reg <= 1;
         end
-        if (!ctrl_stall && !is_nop) begin
-            case (opcode)
-                `XXXI: begin
-                    op1_reg <= reg1_rdata;
-                    op2_reg <= xxxi;
-                    ctrl_alu_func_reg <= funct3;
-                    ctrl_alu_sign_ext_reg <= inst[30];
-                    ctrl_wb_reg <= 1;
-                    ctrl_mem_reg <= 2'b00;
-                end
-                `XXX: begin
-                    op1_reg <= reg1_rdata;
-                    op2_reg <= reg2_rdata;
-                    ctrl_alu_func_reg <= funct3;
-                    ctrl_alu_sign_ext_reg <= inst[30];
-                    ctrl_wb_reg <= 1;
-                    ctrl_mem_reg <= 2'b00;
-                end
-                `LUI: begin
-                    op1_reg <= ui;
-                    op2_reg <= 0;
-                    ctrl_alu_func_reg <= `FADD;
-                    ctrl_alu_sign_ext_reg <= 0;
-                    ctrl_wb_reg <= 1;
-                    ctrl_mem_reg <= 2'b00;
-                end
-                `AUIPC: begin
-                    op1_reg <= ui;
-                    op2_reg <= pc;
-                    ctrl_alu_func_reg <= `FADD;
-                    ctrl_alu_sign_ext_reg <= 0;
-                    ctrl_wb_reg <= 1;
-                    ctrl_mem_reg <= 2'b00;
-                end
-                `LX: begin
-                    op1_reg <= reg1_rdata;
-                    op2_reg <= {{20{l_offset[11]}}, l_offset};
-                    ctrl_alu_func_reg <= `FADD;
-                    ctrl_alu_sign_ext_reg <= 0;
-                    ctrl_wb_reg <= 1;
-                    ctrl_mem_reg <= 2'b10;
-                end
-                `SX: begin
-                    op1_reg <= reg1_rdata;
-                    op2_reg <= {{20{s_offset[11]}}, s_offset};
-                    src_reg <= reg2_rdata;
-                    ctrl_alu_func_reg <= `FADD;
-                    ctrl_alu_sign_ext_reg <= 0;
-                    ctrl_wb_reg <= 0;
-                    ctrl_mem_reg <= 2'b11;
-                end
-                `JAL, `JALR: begin
-                    op1_reg <= pc;
-                    op2_reg <= 4;
-                    ctrl_alu_func_reg <= `FADD;
-                    ctrl_alu_sign_ext_reg <= 0;
-                    ctrl_wb_reg <= 1;
-                    ctrl_mem_reg <= 2'b00;
-                end
-                default: begin
-                    ctrl_wb_reg <= 0;
-                    ctrl_mem_reg <= 2'b00;
-                end
-            endcase
-            rd_reg <= rd;
-            ctrl_skip_next_reg <= ctrl_is_jump;
-            ctrl_is_nop_reg <= is_nop;
-        end
+        else
+            if (!ctrl_stall && !is_nop) begin
+                case (opcode)
+                    `XXXI: begin
+                        op1_reg <= reg1_rdata;
+                        op2_reg <= xxxi;
+                        ctrl_alu_func_reg <= funct3;
+                        ctrl_alu_sign_ext_reg <= inst[30];
+                        ctrl_wb_reg <= 1;
+                        ctrl_mem_reg <= 2'b00;
+                    end
+                    `XXX: begin
+                        op1_reg <= reg1_rdata;
+                        op2_reg <= reg2_rdata;
+                        ctrl_alu_func_reg <= funct3;
+                        ctrl_alu_sign_ext_reg <= inst[30];
+                        ctrl_wb_reg <= 1;
+                        ctrl_mem_reg <= 2'b00;
+                    end
+                    `LUI: begin
+                        op1_reg <= ui;
+                        op2_reg <= 0;
+                        ctrl_alu_func_reg <= `FADD;
+                        ctrl_alu_sign_ext_reg <= 0;
+                        ctrl_wb_reg <= 1;
+                        ctrl_mem_reg <= 2'b00;
+                    end
+                    `AUIPC: begin
+                        op1_reg <= ui;
+                        op2_reg <= pc;
+                        ctrl_alu_func_reg <= `FADD;
+                        ctrl_alu_sign_ext_reg <= 0;
+                        ctrl_wb_reg <= 1;
+                        ctrl_mem_reg <= 2'b00;
+                    end
+                    `LX: begin
+                        op1_reg <= reg1_rdata;
+                        op2_reg <= {{20{l_offset[11]}}, l_offset};
+                        ctrl_alu_func_reg <= `FADD;
+                        ctrl_alu_sign_ext_reg <= 0;
+                        ctrl_wb_reg <= 1;
+                        ctrl_mem_reg <= 2'b10;
+                    end
+                    `SX: begin
+                        op1_reg <= reg1_rdata;
+                        op2_reg <= {{20{s_offset[11]}}, s_offset};
+                        src_reg <= reg2_rdata;
+                        ctrl_alu_func_reg <= `FADD;
+                        ctrl_alu_sign_ext_reg <= 0;
+                        ctrl_wb_reg <= 0;
+                        ctrl_mem_reg <= 2'b11;
+                    end
+                    `JAL, `JALR: begin
+                        op1_reg <= pc;
+                        op2_reg <= 4;
+                        ctrl_alu_func_reg <= `FADD;
+                        ctrl_alu_sign_ext_reg <= 0;
+                        ctrl_wb_reg <= 1;
+                        ctrl_mem_reg <= 2'b00;
+                    end
+                    default: begin
+                        ctrl_wb_reg <= 0;
+                        ctrl_mem_reg <= 2'b00;
+                    end
+                endcase
+                rd_reg <= rd;
+                ctrl_skip_next_reg <= ctrl_is_jump;
+                ctrl_is_nop_reg <= is_nop;
+            end
+            else if (!ctrl_next_stage_stall)
+                ctrl_is_nop_reg <= 1;
     end
-
-    assign ctrl_decoder_stall = 0;
 endmodule
 
 module executor(
@@ -242,7 +247,9 @@ module executor(
     input [4:0] rd,
 
     input ctrl_clk,
+    input ctrl_reset,
     input ctrl_stall,
+    input ctrl_next_stage_stall,
     input [2:0] ctrl_alu_func,
     input ctrl_alu_sign_ext,
     input ctrl_is_nop,
@@ -254,26 +261,33 @@ module executor(
     output reg [4:0] rd_reg,
     output reg ctrl_is_nop_reg,
     output reg ctrl_wb_reg,
-    output reg [1:0] ctrl_mem_reg
+    output reg [1:0] ctrl_mem_reg,
+    output ctrl_executor_stall
 );
+    assign ctrl_executor_stall = 0;
     always_ff @ (posedge ctrl_clk) begin
-        if (!ctrl_stall && !ctrl_is_nop) begin
-            case (ctrl_alu_func)
-                `FADD: res_reg <= ctrl_alu_sign_ext ? op1 - op2 : op1 + op2;
-                `FSLT: res_reg <= $signed(op1) < $signed(op2) ? 1 : 0;
-                `FSLTU: res_reg <= op1 < op2 ? 1 : 0;
-                `FXOR: res_reg <= op1 ^ op2;
-                `FOR: res_reg <= op1 | op2;
-                `FAND: res_reg <= op1 & op2;
-                `FSLL: res_reg <= op1 << op2[4:0];
-                `FSRX: res_reg <= ctrl_alu_sign_ext ? $signed(op1) >> op2[4:0] : op1 >> op2[4:0];
-            endcase
-            src_reg <= src;
-            rd_reg <= rd;
-            ctrl_is_nop_reg <= ctrl_is_nop;
-            ctrl_wb_reg <= ctrl_wb;
-            ctrl_mem_reg <= ctrl_mem;
-        end
+        if (ctrl_reset)
+            ctrl_is_nop_reg <= 1;
+        else
+            if (!ctrl_stall && !ctrl_is_nop) begin
+                case (ctrl_alu_func)
+                    `FADD: res_reg <= ctrl_alu_sign_ext ? op1 - op2 : op1 + op2;
+                    `FSLT: res_reg <= $signed(op1) < $signed(op2) ? 1 : 0;
+                    `FSLTU: res_reg <= op1 < op2 ? 1 : 0;
+                    `FXOR: res_reg <= op1 ^ op2;
+                    `FOR: res_reg <= op1 | op2;
+                    `FAND: res_reg <= op1 & op2;
+                    `FSLL: res_reg <= op1 << op2[4:0];
+                    `FSRX: res_reg <= ctrl_alu_sign_ext ? $signed(op1) >> op2[4:0] : op1 >> op2[4:0];
+                endcase
+                src_reg <= src;
+                rd_reg <= rd;
+                ctrl_is_nop_reg <= ctrl_is_nop;
+                ctrl_wb_reg <= ctrl_wb;
+                ctrl_mem_reg <= ctrl_mem;
+            end
+            else if (!ctrl_next_stage_stall)
+                ctrl_is_nop_reg <= 1;
     end
 endmodule
 
@@ -291,7 +305,9 @@ module memory(
     output dcache_wr,
 
     input ctrl_clk,
+    input ctrl_reset,
     input ctrl_stall,
+    input ctrl_next_stage_stall,
     input ctrl_wb,
     input ctrl_is_nop,
     input [1:0] ctrl_mem,
@@ -308,36 +324,42 @@ module memory(
     assign dcache_addr = res_alu;
     assign ctrl_mem_stall = !dcache_rdy;
     always_ff @ (posedge ctrl_clk) begin
-        if (!ctrl_stall && !ctrl_is_nop) begin
-            if (dcache_en == 1) begin
-                if (dcache_wr == 0) begin
-                    res_reg <= dcache_rdata;
+        if (ctrl_reset)
+            ctrl_is_nop_reg <= 1;
+        else
+            if (!ctrl_stall && !ctrl_is_nop) begin
+                if (dcache_en == 1) begin
+                    if (dcache_wr == 0) begin
+                        res_reg <= dcache_rdata;
+                    end
+                    else
+                        res_reg <= res_alu;
                 end
-            else
-                res_reg <= res_alu;
+                rd_reg <= rd;
+                ctrl_is_nop_reg <= ctrl_is_nop;
+                ctrl_wb_reg <= ctrl_wb;
             end
-            rd_reg <= rd;
-            ctrl_is_nop_reg <= ctrl_is_nop;
-            ctrl_wb_reg <= ctrl_wb;
-        end
+            else if (!ctrl_next_stage_stall)
+                ctrl_is_nop_reg <= 1;
     end
 endmodule
 
 module writeback(
     input [31:0] res,
     input [4:0] rd,
-    input ctrl_clk,
     input ctrl_stall,
     input ctrl_wb,
     input ctrl_is_nop,
 
     output [4:0] reg_waddr,
     output [31:0] reg_wdata,
-    output reg_wen
+    output reg_wen,
+    output ctrl_writeback_stall
 );
     assign reg_waddr = rd;
     assign reg_wdata = res;
     assign reg_wen = !ctrl_stall && !ctrl_is_nop && ctrl_wb;
+    assign ctrl_writeback_stall = 0;
 endmodule
 
 module pipeline (
@@ -365,13 +387,6 @@ module pipeline (
     wire ctrl_executor_stall;
     wire ctrl_mem_stall;
     wire ctrl_writeback_stall;
-    wire ctrl_stall = is_stall(
-        ctrl_fetcher_stall,
-        ctrl_decoder_stall,
-        ctrl_executor_stall,
-        ctrl_mem_stall,
-        ctrl_writeback_stall
-    );
     wire [4:0] reg1_raddr;
     wire [4:0] reg2_raddr;
     wire [31:0] reg1_rdata;
@@ -393,18 +408,40 @@ module pipeline (
 
     wire [31:0] pc_reg_fetch;
     wire [31:0] inst_reg_fetch;
+    wire ctrl_is_nop_fetch;
+
+    wire ctrl_fetcher_stall_in = ctrl_fetcher_stall ||
+                                 ctrl_decoder_stall ||
+                                 ctrl_executor_stall ||
+                                 ctrl_mem_stall ||
+                                 ctrl_writeback_stall;
+
+    wire ctrl_decoder_stall_in = ctrl_decoder_stall ||
+                                 ctrl_executor_stall ||
+                                 ctrl_mem_stall ||
+                                 ctrl_writeback_stall;
+
+    wire ctrl_executor_stall_in = ctrl_executor_stall ||
+                                  ctrl_mem_stall ||
+                                  ctrl_writeback_stall;
+
+    wire ctrl_mem_stall_in = ctrl_mem_stall ||
+                             ctrl_writeback_stall;
 
     fetcher fetch_stage(
         .pc_jump_target(pc_jump_target),
         .ctrl_clk(clock),
-        .ctrl_stall(ctrl_stall),
+        .ctrl_reset(reset),
+        .ctrl_stall(ctrl_fetcher_stall_in),
+        .ctrl_next_stage_stall(ctrl_decoder_stall_in),
         .ctrl_is_jump(ctrl_is_jump),
-        .ctrl_fetcher_stall(ctrl_fetcher_stall),
         .icache_addr(icache_addr),
         .icache_rdy(icache_rdy),
         .icache_data(icache_data),
         .inst_reg(inst_reg_fetch),
-        .pc_reg(pc_reg_fetch)
+        .pc_reg(pc_reg_fetch),
+        .ctrl_is_nop_reg(ctrl_is_nop_fetch),
+        .ctrl_fetcher_stall(ctrl_fetcher_stall)
     );
 
     wire [31:0] op1;
@@ -426,7 +463,9 @@ module pipeline (
         .reg2_rdata(reg2_rdata),
         .ctrl_clk(clock),
         .ctrl_reset(reset),
-        .ctrl_stall(ctrl_stall),
+        .ctrl_stall(ctrl_decoder_stall_in),
+        .ctrl_next_stage_stall(ctrl_executor_stall_in),
+        .ctrl_is_nop(ctrl_is_nop_fetch),
         .op1_reg(op1),
         .op2_reg(op2),
         .src_reg(src_decode),
@@ -454,7 +493,9 @@ module pipeline (
         .src(src_decode),
         .rd(rd_decode),
         .ctrl_clk(clock),
-        .ctrl_stall(ctrl_stall),
+        .ctrl_reset(reset),
+        .ctrl_stall(ctrl_executor_stall_in),
+        .ctrl_next_stage_stall(ctrl_mem_stall_in),
         .ctrl_alu_func(ctrl_alu_func),
         .ctrl_alu_sign_ext(ctrl_alu_sign_ext),
         .ctrl_is_nop(ctrl_is_nop_decode),
@@ -462,10 +503,11 @@ module pipeline (
         .ctrl_mem(ctrl_mem_decode),
         .res_reg(res_exec),
         .src_reg(src_exec),
+        .rd_reg(rd_exec),
         .ctrl_is_nop_reg(ctrl_is_nop_exec),
         .ctrl_wb_reg(ctrl_wb_exec),
         .ctrl_mem_reg(ctrl_mem_exec),
-        .rd_reg(rd_exec)
+        .ctrl_executor_stall(ctrl_executor_stall)
     );
 
     wire [4:0] rd_mem;
@@ -484,7 +526,9 @@ module pipeline (
         .dcache_en(dcache_en),
         .dcache_wr(dcache_wr),
         .ctrl_clk(clock),
-        .ctrl_stall(ctrl_stall),
+        .ctrl_reset(reset),
+        .ctrl_stall(ctrl_mem_stall_in),
+        .ctrl_next_stage_stall(0),
         .ctrl_is_nop(ctrl_is_nop_exec),
         .ctrl_wb(ctrl_wb_exec),
         .ctrl_mem(ctrl_mem_exec),
@@ -498,12 +542,12 @@ module pipeline (
     writeback wb_stage(
         .res(res_mem),
         .rd(rd_mem),
-        .ctrl_clk(clock),
-        .ctrl_stall(ctrl_stall),
+        .ctrl_stall(0),
         .ctrl_wb(ctrl_wb_mem),
         .ctrl_is_nop(ctrl_is_nop_mem),
         .reg_waddr(reg_waddr),
         .reg_wdata(reg_wdata),
-        .reg_wen(reg_wen)
+        .reg_wen(reg_wen),
+        .ctrl_writeback_stall(ctrl_writeback_stall)
     );
 endmodule
