@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <memory>
 #include <vector>
 #include "verilated.h"
@@ -9,17 +10,6 @@ double sc_time_stamp() {
     return main_time;
 }
 
-void reset(std::shared_ptr<Vcpu> cpu) {
-    cpu->reset = 1;
-    cpu->clock = 0;
-    cpu->eval();
-    cpu->clock = 1;
-    cpu->eval();
-    cpu->clock = 0;
-    cpu->reset = 0;
-    cpu->eval();
-}
-
 class SimulatedRAM {
     std::shared_ptr<Vcpu> cpu;
     std::vector<uint8_t> memory;
@@ -29,6 +19,7 @@ class SimulatedRAM {
     int icache_state; // 0 -> reset; 1 -> reading
     int dcache_state; // 0 -> reset; 1 -> reading/writing
 
+    public:
     SimulatedRAM(std::shared_ptr<Vcpu> cpu, size_t capacity): \
             cpu(cpu), capacity(capacity),
             icache_next_rdy(0),
@@ -38,7 +29,7 @@ class SimulatedRAM {
         cpu->dcache_rdy = 0;
     }
 
-    void tick() {
+    void eval_posedge() {
         if (cpu->reset == 1)
         {
             icache_state = 0;
@@ -58,8 +49,15 @@ class SimulatedRAM {
             if (icache_next_rdy == 0)
             {
                 assert(cpu->icache_addr + 4 < capacity);
-                cpu->icache_data = *(uint32_t *)(&memory[0] + cpu->icache_addr);
+                cpu->icache_data = \
+                    memory[cpu->icache_addr] |
+                    (memory[cpu->icache_addr + 1] << 8) |
+                    (memory[cpu->icache_addr + 2] << 16) |
+                    (memory[cpu->icache_addr + 3] << 24);
                 cpu->icache_rdy = 1;
+                icache_state = 0;
+                printf("icache: read byte @ %08x = %08x\n", cpu->icache_addr, cpu->icache_data);
+                schedule_next_icache_rdy(5);
             } else icache_next_rdy--;
         }
 
@@ -74,38 +72,97 @@ class SimulatedRAM {
             if (dcache_next_rdy == 0)
             {
                 assert(cpu->dcache_addr + 4 < capacity);
-                auto word = (uint32_t *)(&memory[0] + cpu->dcache_addr);
                 if (cpu->dcache_wr)
-                    *word = cpu->dcache_wdata;
+                {
+                    auto addr = cpu->dcache_addr;
+                    auto data = cpu->dcache_wdata;
+                    if (cpu->dcache_ws == 0)
+                    {
+                        printf("dcache: write byte @ %08x = %02x\n", addr, data);
+                        memory[addr] = data & 0xff;
+                    }
+                    else if (cpu->dcache_ws == 1)
+                    {
+                        printf("dcache: write halfword @ %08x = %04x\n", addr, data);
+                        memory[addr] = data & 0xff;
+                        memory[addr + 1] = (data >> 8) & 0xff;
+                    }
+                    else if (cpu->dcache_ws == 2)
+                    {
+                        printf("dcache: write word @ %08x = %08x\n", addr, data);
+                        memory[addr] = data & 0xff;
+                        memory[addr + 1] = (data >> 8) & 0xff;
+                        memory[addr + 2] = (data >> 16) & 0xff;
+                        memory[addr + 3] = (data >> 24) & 0xff;
+                    }
+                    else assert(0);
+                }
                 else
-                    cpu->dcache_rdata = *word;
+                {
+                    cpu->dcache_rdata = *(uint32_t *)(&memory[0] + cpu->dcache_addr);
+                    printf("dcache: read word @ %08x = %08x\n", cpu->dcache_addr, cpu->dcache_rdata);
+                }
                 cpu->dcache_rdy = 1;
+                dcache_state = 0;
             } else dcache_next_rdy--;
         }
     }
 
     void schedule_next_icache_rdy(uint64_t nstep) {
-        cpu->icache_rdy = nstep;
+        icache_next_rdy = nstep;
     }
 
     void schedule_next_dcache_rdy(uint64_t nstep) {
-        cpu->dcache_rdy = nstep;
+        dcache_next_rdy = nstep;
+    }
+};
+
+struct SoC {
+    std::shared_ptr<Vcpu> cpu;
+    SimulatedRAM ram;
+
+    SoC(std::shared_ptr<Vcpu> cpu, size_t mem_cap): cpu(cpu), ram(cpu, mem_cap) {}
+
+    void reset() {
+        cpu->reset = 1;
+        cpu->clock = 0;
+        tick();
+        cpu->clock = 1;
+        tick();
+        cpu->reset = 0;
+    }
+
+    void tick() {
+        if (cpu->clock)
+        {
+            main_time++;
+            ram.eval_posedge();
+        }
+        cpu->eval();
+    }
+
+    void next_tick() {
+        cpu->clock = !cpu->clock;
+        tick();
+    }
+
+    void halt() {
+        cpu->final();               // Done simulating
     }
 };
 
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
-    auto cpu = std::make_shared<Vcpu>();
-    reset(cpu);
+    auto soc = SoC(std::make_shared<Vcpu>(), 1 << 10);
+    soc.reset();
+    printf("reset\n");
     while (!Verilated::gotFinish()) {
-        cpu->clock = !cpu->clock;
-        if (cpu->clock)
-            main_time++;
-        cpu->eval();
-        if (main_time > 100)
+        soc.next_tick();
+        puts("===");
+        if (main_time > 15)
         {
             break;
         }
     }
-    cpu->final();               // Done simulating
+    soc.halt();
 }

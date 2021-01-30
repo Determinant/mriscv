@@ -10,6 +10,7 @@ module cpu(
 
     output [31:0] dcache_addr,
     output [31:0] dcache_wdata,
+    output [1:0] dcache_ws,
     output dcache_req,
     output dcache_wr,
     input [31:0] dcache_rdata,
@@ -24,6 +25,7 @@ module cpu(
         icache_rdy,
         dcache_addr,
         dcache_wdata,
+        dcache_ws,
         dcache_req,
         dcache_wr,
         dcache_rdata,

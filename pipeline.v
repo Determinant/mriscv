@@ -32,6 +32,12 @@
 `define FBLTU   3'b110
 `define FBGEU   3'b111
 
+`define FB      3'b000
+`define FH      3'b001
+`define FW      3'b010
+`define FBU     3'b100
+`define FHU     3'b101
+
 module register_file(
     input [4:0] reg1_raddr,
     input [4:0] reg2_raddr,
@@ -54,7 +60,7 @@ module register_file(
         begin
             `ifndef SYNTHESIS
                 $display(
-                    "[%0t] write %h to register %d",
+                    "[%0t] [wb] write %h to register %d",
                     $time, reg_wdata, reg_waddr
                 );
             `endif
@@ -63,7 +69,7 @@ module register_file(
         else
         begin
             `ifndef SYNTHESIS
-                $display("[%0t] no write to register files", $time);
+                $display("[%0t] [wb] no write to register files", $time);
             `endif
         end
     end
@@ -102,7 +108,7 @@ module fetcher(
             if (!ctrl_stall) begin
                 `ifndef SYNTHESIS
                     $display(
-                        "[%0t] fetch stage works on pc_jump_target=%h pc=%h",
+                        "[%0t] [fetch] stage works on pc_jump_target=%h pc=%h",
                         $time, pc_jump_target, pc
                     );
                 `endif
@@ -113,7 +119,7 @@ module fetcher(
             end
             else begin
                 `ifndef SYNTHESIS
-                    $display("[%0t] fetcher stage idle", $time);
+                    $display("[%0t] [fetch] stage idle rdy=%b", $time, icache_rdy);
                 `endif
                 if (!ctrl_next_stage_stall)// insert a bubble
                     ctrl_is_nop_reg <= 1;
@@ -143,7 +149,7 @@ module decoder(
     output reg ctrl_alu_sign_ext_reg,
     output reg ctrl_is_nop_reg,
     output reg ctrl_wb_reg,
-    output reg [1:0] ctrl_mem_reg,
+    output reg [4:0] ctrl_mem_reg,
     output [31:0] ctrl_pc_jump_target,
     output ctrl_is_jump,
     output ctrl_decoder_stall
@@ -199,7 +205,7 @@ module decoder(
             if (!ctrl_stall && !is_nop) begin
                 `ifndef SYNTHESIS
                     $display(
-                        "[%0t] decode stage works on inst=%h pc=%h",
+                        "[%0t] [decode] stage works on inst=%h pc=%h",
                         $time, inst, pc
                     );
                 `endif
@@ -210,7 +216,7 @@ module decoder(
                         ctrl_alu_func_reg <= funct3;
                         ctrl_alu_sign_ext_reg <= inst[30];
                         ctrl_wb_reg <= 1;
-                        ctrl_mem_reg <= 2'b00;
+                        ctrl_mem_reg <= 5'b00000;
                     end
                     `XXX: begin
                         op1_reg <= reg1_rdata;
@@ -218,7 +224,7 @@ module decoder(
                         ctrl_alu_func_reg <= funct3;
                         ctrl_alu_sign_ext_reg <= inst[30];
                         ctrl_wb_reg <= 1;
-                        ctrl_mem_reg <= 2'b00;
+                        ctrl_mem_reg <= 5'b00000;
                     end
                     `LUI: begin
                         op1_reg <= ui;
@@ -226,7 +232,7 @@ module decoder(
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 1;
-                        ctrl_mem_reg <= 2'b00;
+                        ctrl_mem_reg <= 5'b00000;
                     end
                     `AUIPC: begin
                         op1_reg <= ui;
@@ -234,7 +240,7 @@ module decoder(
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 1;
-                        ctrl_mem_reg <= 2'b00;
+                        ctrl_mem_reg <= 5'b00000;
                     end
                     `LX: begin
                         op1_reg <= reg1_rdata;
@@ -242,7 +248,7 @@ module decoder(
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 1;
-                        ctrl_mem_reg <= 2'b10;
+                        ctrl_mem_reg <= {funct3, 2'b10};
                     end
                     `SX: begin
                         op1_reg <= reg1_rdata;
@@ -251,7 +257,7 @@ module decoder(
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 0;
-                        ctrl_mem_reg <= 2'b11;
+                        ctrl_mem_reg <= {funct3, 2'b11};
                     end
                     `JAL, `JALR: begin
                         op1_reg <= pc;
@@ -259,11 +265,11 @@ module decoder(
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 1;
-                        ctrl_mem_reg <= 2'b00;
+                        ctrl_mem_reg <= {funct3, 2'b00};
                     end
                     default: begin
                         ctrl_wb_reg <= 0;
-                        ctrl_mem_reg <= 2'b00;
+                        ctrl_mem_reg <= 5'b00000;
                     end
                 endcase
                 rd_reg <= rd;
@@ -272,7 +278,7 @@ module decoder(
             end
             else begin
                 `ifndef SYNTHESIS
-                    $display("[%0t] decode stage idle", $time);
+                    $display("[%0t] [decode] stage idle", $time);
                 `endif
                 if (!ctrl_next_stage_stall)
                     ctrl_is_nop_reg <= 1;
@@ -294,14 +300,14 @@ module executor(
     input ctrl_alu_sign_ext,
     input ctrl_is_nop,
     input ctrl_wb,
-    input [1:0] ctrl_mem,
+    input [4:0] ctrl_mem,
 
     output reg [31:0] res_reg,
     output reg [31:0] src_reg,
     output reg [4:0] rd_reg,
     output reg ctrl_is_nop_reg,
     output reg ctrl_wb_reg,
-    output reg [1:0] ctrl_mem_reg,
+    output reg [4:0] ctrl_mem_reg,
     output ctrl_executor_stall
 );
     assign ctrl_executor_stall = 0;
@@ -312,7 +318,7 @@ module executor(
             if (!ctrl_stall && !ctrl_is_nop) begin
                 `ifndef SYNTHESIS
                     $display(
-                        "[%0t] execution stage works on op1=%h op2=%h src=%h rd=%d",
+                        "[%0t] [execution] stage works on op1=%h op2=%h src=%h rd=%d",
                         $time, op1, op2, src, rd
                     );
                 `endif
@@ -334,7 +340,7 @@ module executor(
             end
             else begin
                 `ifndef SYNTHESIS
-                    $display("[%0t] execution stage idle", $time);
+                    $display("[%0t] [execution] stage idle", $time);
                 `endif
                 if (!ctrl_next_stage_stall)
                     ctrl_is_nop_reg <= 1;
@@ -350,6 +356,7 @@ module memory(
     // d-cache communication
     output [31:0] dcache_addr,
     output [31:0] dcache_wdata,
+    output [1:0] dcache_ws,
     output dcache_req,
     output dcache_wr,
     input [31:0] dcache_rdata,
@@ -361,7 +368,7 @@ module memory(
     input ctrl_next_stage_stall,
     input ctrl_wb,
     input ctrl_is_nop,
-    input [1:0] ctrl_mem,
+    input [4:0] ctrl_mem,
 
     output reg [31:0] res_reg,
     output reg [4:0] rd_reg,
@@ -371,9 +378,11 @@ module memory(
 );
     assign dcache_req = ctrl_mem[1];
     assign dcache_wr = ctrl_mem[0];
+    assign dcache_ws = ctrl_mem[3:2]; // SB/SH/SW
     assign dcache_wdata = src;
     assign dcache_addr = res_alu;
-    assign ctrl_mem_stall = !dcache_rdy;
+    assign ctrl_mem_stall = ctrl_wb && (!dcache_rdy);
+    wire sgn = ctrl_mem[4];
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset)
             ctrl_is_nop_reg <= 1;
@@ -381,13 +390,17 @@ module memory(
             if (!ctrl_stall && !ctrl_is_nop) begin
                 `ifndef SYNTHESIS
                     $display(
-                        "[%0t] memory stage works on res_alu=%h src=%h rd=%d",
+                        "[%0t] [memory] stage works on res_alu=%h src=%h rd=%d",
                         $time, res_alu, src, rd
                     );
                 `endif
                 if (dcache_req == 1) begin
                     if (dcache_wr == 0) begin
-                        res_reg <= dcache_rdata;
+                        case (dcache_ws)
+                            'b00: res_reg <= {{24{sgn ? dcache_rdata[7] : 1'b0}}, dcache_rdata[7:0]}; // LB/LBU
+                            'b01: res_reg <= {{16{sgn ? dcache_rdata[15] : 1'b0}}, dcache_rdata[15:0]}; // LH/LHU
+                            'b10: res_reg <= dcache_rdata; // LW
+                        endcase
                     end
                     else
                         res_reg <= res_alu;
@@ -398,7 +411,7 @@ module memory(
             end
             else begin
                 `ifndef SYNTHESIS
-                    $display("[%0t] memory stage idle", $time);
+                    $display("[%0t] [memory] stage idle", $time);
                 `endif
                 if (!ctrl_next_stage_stall)
                     ctrl_is_nop_reg <= 1;
@@ -437,6 +450,7 @@ module pipeline (
     // d-cache communication
     output [31:0] dcache_addr,
     output [31:0] dcache_wdata,
+    output [1:0] dcache_ws,
     output dcache_req,
     output dcache_wr,
     input [31:0] dcache_rdata,
@@ -518,7 +532,7 @@ module pipeline (
     wire ctrl_alu_sign_ext;
     wire ctrl_is_nop_decode;
     wire ctrl_wb_decode;
-    wire [1:0] ctrl_mem_decode;
+    wire [4:0] ctrl_mem_decode;
 
     decoder decode_stage(
         .inst(inst_reg_fetch),
@@ -551,7 +565,7 @@ module pipeline (
     wire [4:0] rd_exec;
     wire ctrl_is_nop_exec;
     wire ctrl_wb_exec;
-    wire [1:0] ctrl_mem_exec;
+    wire [4:0] ctrl_mem_exec;
 
     executor exec_stage(
         .op1(op1),
@@ -587,6 +601,7 @@ module pipeline (
         .rd(rd_exec),
         .dcache_addr(dcache_addr),
         .dcache_wdata(dcache_wdata),
+        .dcache_ws(dcache_ws),
         .dcache_req(dcache_req),
         .dcache_wr(dcache_wr),
         .dcache_rdata(dcache_rdata),
