@@ -29,9 +29,21 @@ class SimulatedRAM {
         cpu->dcache_rdy = 0;
     }
 
+    void load_image_from_file(FILE *img_file, size_t mem_off, size_t len = 0) {
+        if (len == 0)
+        {
+            auto old = ftell(img_file);
+            fseek(img_file, 0L, SEEK_END);
+            len = ftell(img_file);
+            fseek(img_file, old, SEEK_SET);
+        }
+        fread(&memory[0] + mem_off, 1, len, img_file);
+    }
+
     void eval_posedge() {
         if (cpu->reset == 1)
         {
+            printf("reset ram\n");
             icache_state = 0;
             dcache_state = 0;
             cpu->icache_rdy = 0;
@@ -57,7 +69,7 @@ class SimulatedRAM {
                 cpu->icache_rdy = 1;
                 icache_state = 0;
                 printf("icache: read byte @ %08x = %08x\n", cpu->icache_addr, cpu->icache_data);
-                schedule_next_icache_rdy(5);
+                schedule_next_icache_rdy(4);
             } else icache_next_rdy--;
         }
 
@@ -104,7 +116,11 @@ class SimulatedRAM {
                 }
                 cpu->dcache_rdy = 1;
                 dcache_state = 0;
-            } else dcache_next_rdy--;
+                schedule_next_dcache_rdy(1);
+            } else {
+                printf("delayed dcache response: %lu\n", dcache_next_rdy);
+                dcache_next_rdy--;
+            }
         }
     }
 
@@ -124,16 +140,18 @@ struct SoC {
     SoC(std::shared_ptr<Vcpu> cpu, size_t mem_cap): cpu(cpu), ram(cpu, mem_cap) {}
 
     void reset() {
-        cpu->reset = 1;
         cpu->clock = 0;
+        cpu->reset = 1;
         tick();
+
         cpu->clock = 1;
         tick();
+
         cpu->reset = 0;
     }
 
     void tick() {
-        if (cpu->clock)
+        if (!cpu->clock)
         {
             main_time++;
             ram.eval_posedge();
@@ -153,13 +171,16 @@ struct SoC {
 
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
-    auto soc = SoC(std::make_shared<Vcpu>(), 1 << 10);
+    auto soc = SoC(std::make_shared<Vcpu>(), 32 << 20);
     soc.reset();
+    FILE *img = fopen("tests/add.bin", "r");
+    soc.ram.load_image_from_file(img, 0x0);
+    fclose(img);
     printf("reset\n");
     while (!Verilated::gotFinish()) {
         soc.next_tick();
         puts("===");
-        if (main_time > 15)
+        if (main_time > 100000)
         {
             break;
         }

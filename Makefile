@@ -13,4 +13,4 @@ cpu_cc: cpu.v pipeline.v
 cpu_cc/Vcpu__ALL.a: cpu_cc
 	make -C cpu_cc -f Vcpu.mk
 sim: sim.cpp cpu_cc/Vcpu__ALL.a
-	$(CXX) -o $@ $< -I cpu_cc -I $(verilator_base)/include/ cpu_cc/Vcpu__ALL.a $(verilator_base)/include/verilated.cpp
+	$(CXX) -o $@ $< -I cpu_cc -I $(verilator_base)/include/ cpu_cc/Vcpu__ALL.a $(verilator_base)/include/verilated.cpp -g
