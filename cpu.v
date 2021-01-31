@@ -2,6 +2,7 @@
 module cpu(
     input clock,
     input reset,
+    output [31:0] _debug_pc_addr,
 
     output [31:0] icache_addr,
     output icache_req,
@@ -19,6 +20,7 @@ module cpu(
     pipeline pl (
         clock,
         reset,
+        _debug_pc_addr,
         icache_addr,
         icache_req,
         icache_data,

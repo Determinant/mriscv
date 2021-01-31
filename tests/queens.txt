@@ -1,0 +1,112 @@
+
+queens.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00000000 <_start>:
+   0:	00200137          	lui	x2,0x200
+   4:	14c000ef          	jal	x1,150 <main>
+
+00000008 <halt>:
+   8:	00000063          	beq	x0,x0,8 <halt>
+
+0000000c <queen>:
+   c:	fc010113          	addi	x2,x2,-64 # 1fffc0 <main+0x1ffe70>
+  10:	02112e23          	sw	x1,60(x2)
+  14:	02812c23          	sw	x8,56(x2)
+  18:	04010413          	addi	x8,x2,64
+  1c:	fca42e23          	sw	x10,-36(x8)
+  20:	fcb42c23          	sw	x11,-40(x8)
+  24:	fcc42a23          	sw	x12,-44(x8)
+  28:	fcd42823          	sw	x13,-48(x8)
+  2c:	fce42623          	sw	x14,-52(x8)
+  30:	fdc42783          	lw	x15,-36(x8)
+  34:	00079663          	bne	x15,x0,40 <queen+0x34>
+  38:	00100793          	addi	x15,x0,1
+  3c:	0bc0006f          	jal	x0,f8 <queen+0xec>
+  40:	fe042623          	sw	x0,-20(x8)
+  44:	fd842703          	lw	x14,-40(x8)
+  48:	fd442783          	lw	x15,-44(x8)
+  4c:	00f767b3          	or	x15,x14,x15
+  50:	fd042703          	lw	x14,-48(x8)
+  54:	00f767b3          	or	x15,x14,x15
+  58:	fef42223          	sw	x15,-28(x8)
+  5c:	fe042423          	sw	x0,-24(x8)
+  60:	0880006f          	jal	x0,e8 <queen+0xdc>
+  64:	fe842783          	lw	x15,-24(x8)
+  68:	00100713          	addi	x14,x0,1
+  6c:	00f717b3          	sll	x15,x14,x15
+  70:	fef42023          	sw	x15,-32(x8)
+  74:	fe442703          	lw	x14,-28(x8)
+  78:	fe042783          	lw	x15,-32(x8)
+  7c:	00f777b3          	and	x15,x14,x15
+  80:	04079c63          	bne	x15,x0,d8 <queen+0xcc>
+  84:	fdc42783          	lw	x15,-36(x8)
+  88:	fff78513          	addi	x10,x15,-1
+  8c:	fd842703          	lw	x14,-40(x8)
+  90:	fe042783          	lw	x15,-32(x8)
+  94:	00f767b3          	or	x15,x14,x15
+  98:	00179593          	slli	x11,x15,0x1
+  9c:	fd442703          	lw	x14,-44(x8)
+  a0:	fe042783          	lw	x15,-32(x8)
+  a4:	00f767b3          	or	x15,x14,x15
+  a8:	0017d613          	srli	x12,x15,0x1
+  ac:	fd042703          	lw	x14,-48(x8)
+  b0:	fe042783          	lw	x15,-32(x8)
+  b4:	00f767b3          	or	x15,x14,x15
+  b8:	fcc42703          	lw	x14,-52(x8)
+  bc:	00078693          	addi	x13,x15,0
+  c0:	f4dff0ef          	jal	x1,c <queen>
+  c4:	00050713          	addi	x14,x10,0
+  c8:	fec42783          	lw	x15,-20(x8)
+  cc:	00e787b3          	add	x15,x15,x14
+  d0:	fef42623          	sw	x15,-20(x8)
+  d4:	0080006f          	jal	x0,dc <queen+0xd0>
+  d8:	00000013          	addi	x0,x0,0
+  dc:	fe842783          	lw	x15,-24(x8)
+  e0:	00178793          	addi	x15,x15,1
+  e4:	fef42423          	sw	x15,-24(x8)
+  e8:	fcc42783          	lw	x15,-52(x8)
+  ec:	fe842703          	lw	x14,-24(x8)
+  f0:	f6f76ae3          	bltu	x14,x15,64 <queen+0x58>
+  f4:	fec42783          	lw	x15,-20(x8)
+  f8:	00078513          	addi	x10,x15,0
+  fc:	03c12083          	lw	x1,60(x2)
+ 100:	03812403          	lw	x8,56(x2)
+ 104:	04010113          	addi	x2,x2,64
+ 108:	00008067          	jalr	x0,0(x1)
+
+0000010c <nqueen>:
+ 10c:	fe010113          	addi	x2,x2,-32
+ 110:	00112e23          	sw	x1,28(x2)
+ 114:	00812c23          	sw	x8,24(x2)
+ 118:	02010413          	addi	x8,x2,32
+ 11c:	fea42623          	sw	x10,-20(x8)
+ 120:	fec42703          	lw	x14,-20(x8)
+ 124:	00000693          	addi	x13,x0,0
+ 128:	00000613          	addi	x12,x0,0
+ 12c:	00000593          	addi	x11,x0,0
+ 130:	fec42503          	lw	x10,-20(x8)
+ 134:	ed9ff0ef          	jal	x1,c <queen>
+ 138:	00050793          	addi	x15,x10,0
+ 13c:	00078513          	addi	x10,x15,0
+ 140:	01c12083          	lw	x1,28(x2)
+ 144:	01812403          	lw	x8,24(x2)
+ 148:	02010113          	addi	x2,x2,32
+ 14c:	00008067          	jalr	x0,0(x1)
+
+00000150 <main>:
+ 150:	fe010113          	addi	x2,x2,-32
+ 154:	00112e23          	sw	x1,28(x2)
+ 158:	00812c23          	sw	x8,24(x2)
+ 15c:	02010413          	addi	x8,x2,32
+ 160:	00800513          	addi	x10,x0,8
+ 164:	fa9ff0ef          	jal	x1,10c <nqueen>
+ 168:	fea42623          	sw	x10,-20(x8)
+ 16c:	00000793          	addi	x15,x0,0
+ 170:	00078513          	addi	x10,x15,0
+ 174:	01c12083          	lw	x1,28(x2)
+ 178:	01812403          	lw	x8,24(x2)
+ 17c:	02010113          	addi	x2,x2,32
+ 180:	00008067          	jalr	x0,0(x1)

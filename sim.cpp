@@ -5,6 +5,7 @@
 #include "Vcpu.h"
 
 uint64_t main_time = 0;
+const uint32_t halt_addr = 0x00000008;
 
 double sc_time_stamp() {
     return main_time;
@@ -173,17 +174,18 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     auto soc = SoC(std::make_shared<Vcpu>(), 32 << 20);
     soc.reset();
-    FILE *img = fopen("tests/add.bin", "r");
+    //FILE *img = fopen("tests/add.bin", "r");
+    FILE *img = fopen("tests/queens.bin", "r");
     soc.ram.load_image_from_file(img, 0x0);
     fclose(img);
     printf("reset\n");
     while (!Verilated::gotFinish()) {
         soc.next_tick();
         puts("===");
-        if (main_time > 2000)
+        if (soc.cpu->_debug_pc_addr == halt_addr)
         {
+            soc.halt();
             break;
         }
     }
-    soc.halt();
 }

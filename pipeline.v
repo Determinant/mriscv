@@ -137,6 +137,7 @@ module decoder(
     input ctrl_stall,
     input ctrl_next_stage_stall,
     input ctrl_is_nop,
+    output [31:0]_debug_pc_addr,
 
     output reg [31:0] op1_reg,
     output reg [31:0] op2_reg,
@@ -196,6 +197,8 @@ module decoder(
                (funct3[1] == 0 ?
                   (($signed(reg1_rdata) < $signed(reg2_rdata)) ^ (funct3[0])) : // BLT & BGE
                   ((reg1_rdata < reg2_rdata) ^ (funct3[0]))) : 0); // BLTU & BGEU
+
+    assign _debug_pc_addr = is_nop ? 'hffffffff : pc;
 
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
@@ -456,6 +459,7 @@ endmodule
 module pipeline (
     input clock,
     input reset,
+    output [31:0]_debug_pc_addr,
 
     // i-cache communication
     output [31:0] icache_addr,
@@ -574,7 +578,8 @@ module pipeline (
         .ctrl_mem_reg(ctrl_mem_decode),
         .ctrl_pc_jump_target(pc_jump_target),
         .ctrl_is_jump(ctrl_is_jump),
-        .ctrl_decoder_stall(ctrl_decoder_stall)
+        .ctrl_decoder_stall(ctrl_decoder_stall),
+        ._debug_pc_addr(_debug_pc_addr)
     );
 
     wire [31:0] res_exec;

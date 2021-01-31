@@ -1,13 +1,15 @@
 .PHONY: all
 
-all: add add.txt add.bin
+all: \
+	add.txt add.bin add.elf \
+	queens.txt queens.bin queens.elf
 
-add: add.c startup.s
-	riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -O0 -nostdlib -Wl,-Tlink.x -o $@ startup.s $<
+%.elf: %.c startup.s
+	riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -O0 -nostdlib -Wl,-Tlink.x -g -o $@ startup.s $<
 
-add.txt: add
-	riscv64-linux-gnu-objdump -Mno-aliases -Mnumeric -d $< > $@
+%.txt: %.elf
+	riscv64-linux-gnu-objdump -Mno-aliases -Mnumeric -dS $< > $@
 
-add.bin: add
+%.bin: %.elf
 	riscv64-linux-gnu-objcopy -O binary -j .text $< $@
 
