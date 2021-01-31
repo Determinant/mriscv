@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
     while (!Verilated::gotFinish()) {
         soc.next_tick();
         puts("===");
-        if (main_time > 100000)
+        if (main_time > 2000)
         {
             break;
         }
