@@ -195,7 +195,10 @@ module decoder(
     wire [12:0] b_offset = {inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
     wire [11:0] l_offset = inst[31:20];
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
-    wire is_nop = ctrl_is_nop || (opcode == `XXXI && inst[31:7] == 0) || ctrl_skip_next_reg;
+    wire is_nop = ctrl_is_nop ||
+                  ctrl_skip_next_reg ||
+                  (opcode == `XXXI && inst[31:7] == 0) ||
+                  opcode == `FEN;
 
     assign ctrl_decoder_stall = ctrl_forward_mload_stall &&
                                 (((opcode == `XXXI ||
@@ -305,7 +308,7 @@ module decoder(
                         ctrl_wb_reg <= 1;
                         ctrl_mem_reg <= {funct3, 2'b00};
                     end
-                    default: begin
+                    default: begin // TODO: illegal instruction detection
                         ctrl_wb_reg <= 0;
                         ctrl_mem_reg <= 5'b00000;
                     end
