@@ -6,54 +6,59 @@ Disassembly of section .text:
 
 00000000 <_start>:
    0:	00200137          	lui	x2,0x200
-   4:	060000ef          	jal	x1,64 <main>
+   4:	074000ef          	jal	x1,78 <main>
+   8:	00000013          	addi	x0,x0,0
+   c:	00000013          	addi	x0,x0,0
+  10:	00000013          	addi	x0,x0,0
+  14:	00000013          	addi	x0,x0,0
+  18:	00000013          	addi	x0,x0,0
 
-00000008 <halt>:
-   8:	00000063          	beq	x0,x0,8 <halt>
+0000001c <halt>:
+  1c:	00000063          	beq	x0,x0,1c <halt>
 
-0000000c <add>:
-   c:	fe010113          	addi	x2,x2,-32 # 1fffe0 <main+0x1fff7c>
-  10:	00112e23          	sw	x1,28(x2)
-  14:	00812c23          	sw	x8,24(x2)
-  18:	02010413          	addi	x8,x2,32
-  1c:	fea42623          	sw	x10,-20(x8)
-  20:	fec42703          	lw	x14,-20(x8)
-  24:	00100793          	addi	x15,x0,1
-  28:	02e7d263          	bge	x15,x14,4c <add+0x40>
-  2c:	fec42783          	lw	x15,-20(x8)
-  30:	fff78793          	addi	x15,x15,-1
-  34:	00078513          	addi	x10,x15,0
-  38:	fd5ff0ef          	jal	x1,c <add>
-  3c:	00050713          	addi	x14,x10,0
+00000020 <add>:
+  20:	fe010113          	addi	x2,x2,-32 # 1fffe0 <main+0x1fff68>
+  24:	00112e23          	sw	x1,28(x2)
+  28:	00812c23          	sw	x8,24(x2)
+  2c:	02010413          	addi	x8,x2,32
+  30:	fea42623          	sw	x10,-20(x8)
+  34:	fec42703          	lw	x14,-20(x8)
+  38:	00100793          	addi	x15,x0,1
+  3c:	02e7d263          	bge	x15,x14,60 <add+0x40>
   40:	fec42783          	lw	x15,-20(x8)
-  44:	00f707b3          	add	x15,x14,x15
-  48:	0080006f          	jal	x0,50 <add+0x44>
-  4c:	00100793          	addi	x15,x0,1
-  50:	00078513          	addi	x10,x15,0
-  54:	01c12083          	lw	x1,28(x2)
-  58:	01812403          	lw	x8,24(x2)
-  5c:	02010113          	addi	x2,x2,32
-  60:	00008067          	jalr	x0,0(x1)
+  44:	fff78793          	addi	x15,x15,-1
+  48:	00078513          	addi	x10,x15,0
+  4c:	fd5ff0ef          	jal	x1,20 <add>
+  50:	00050713          	addi	x14,x10,0
+  54:	fec42783          	lw	x15,-20(x8)
+  58:	00f707b3          	add	x15,x14,x15
+  5c:	0080006f          	jal	x0,64 <add+0x44>
+  60:	00100793          	addi	x15,x0,1
+  64:	00078513          	addi	x10,x15,0
+  68:	01c12083          	lw	x1,28(x2)
+  6c:	01812403          	lw	x8,24(x2)
+  70:	02010113          	addi	x2,x2,32
+  74:	00008067          	jalr	x0,0(x1)
 
-00000064 <main>:
-  64:	fe010113          	addi	x2,x2,-32
-  68:	00112e23          	sw	x1,28(x2)
-  6c:	00812c23          	sw	x8,24(x2)
-  70:	02010413          	addi	x8,x2,32
-  74:	00400793          	addi	x15,x0,4
-  78:	fef42623          	sw	x15,-20(x8)
-  7c:	00500793          	addi	x15,x0,5
-  80:	fef42423          	sw	x15,-24(x8)
-  84:	fec42703          	lw	x14,-20(x8)
-  88:	fe842783          	lw	x15,-24(x8)
-  8c:	00f707b3          	add	x15,x14,x15
-  90:	fef42223          	sw	x15,-28(x8)
-  94:	fe442503          	lw	x10,-28(x8)
-  98:	f75ff0ef          	jal	x1,c <add>
-  9c:	fea42023          	sw	x10,-32(x8)
-  a0:	00000793          	addi	x15,x0,0
-  a4:	00078513          	addi	x10,x15,0
-  a8:	01c12083          	lw	x1,28(x2)
-  ac:	01812403          	lw	x8,24(x2)
-  b0:	02010113          	addi	x2,x2,32
-  b4:	00008067          	jalr	x0,0(x1)
+00000078 <main>:
+  78:	fe010113          	addi	x2,x2,-32
+  7c:	00112e23          	sw	x1,28(x2)
+  80:	00812c23          	sw	x8,24(x2)
+  84:	02010413          	addi	x8,x2,32
+  88:	00400793          	addi	x15,x0,4
+  8c:	fef42623          	sw	x15,-20(x8)
+  90:	00500793          	addi	x15,x0,5
+  94:	fef42423          	sw	x15,-24(x8)
+  98:	fec42703          	lw	x14,-20(x8)
+  9c:	fe842783          	lw	x15,-24(x8)
+  a0:	00f707b3          	add	x15,x14,x15
+  a4:	fef42223          	sw	x15,-28(x8)
+  a8:	fe442503          	lw	x10,-28(x8)
+  ac:	f75ff0ef          	jal	x1,20 <add>
+  b0:	fea42023          	sw	x10,-32(x8)
+  b4:	00000793          	addi	x15,x0,0
+  b8:	00078513          	addi	x10,x15,0
+  bc:	01c12083          	lw	x1,28(x2)
+  c0:	01812403          	lw	x8,24(x2)
+  c4:	02010113          	addi	x2,x2,32
+  c8:	00008067          	jalr	x0,0(x1)

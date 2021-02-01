@@ -1,4 +1,4 @@
-`include "pipeline.v"
+`include "pipeline.sv"
 module cpu(
     input clock,
     input reset,

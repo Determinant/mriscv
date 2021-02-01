@@ -38,6 +38,12 @@
 `define FBU     3'b100
 `define FHU     3'b101
 
+`ifndef SYNTHESIS
+    `ifdef DEBUG
+        `define PIPELINE_DEBUG
+    `endif
+`endif
+
 module register_file(
     input [4:0] reg1_raddr,
     input [4:0] reg2_raddr,
@@ -52,12 +58,13 @@ module register_file(
 );
     // register file
     reg [31:0] regs [31:0];
-    assign reg1_rdata = regs[reg1_raddr];
-    assign reg2_rdata = regs[reg2_raddr];
+    wire writing = reg_wen && reg_waddr != 0;
+    assign reg1_rdata = writing && reg_waddr == reg1_raddr ? reg_wdata : regs[reg1_raddr];
+    assign reg2_rdata = writing && reg_waddr == reg2_raddr ? reg_wdata : regs[reg2_raddr];
     assign regs[0] = 0;
     always_ff @ (posedge ctrl_clk) begin
-        if (reg_wen && reg_waddr != 0) begin
-            `ifndef SYNTHESIS
+        if (writing) begin
+            `ifdef PIPELINE_DEBUG
                 $display(
                     "[%0t] *[wb] write 0x%h to register %d",
                     $time, reg_wdata, reg_waddr
@@ -65,7 +72,7 @@ module register_file(
             `endif
             regs[reg_waddr] <= reg_wdata;
         end else begin
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display("[%0t]  [wb] idle", $time);
             `endif
         end
@@ -98,13 +105,13 @@ module fetcher(
     assign ctrl_fetcher_stall = !icache_rdy;
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display("[%0t] reset pc", $time);
             `endif
             pc <= 32'h00000000; // initialize PC to 0x00000000
             ctrl_is_nop_reg <= 1;
         end else if (!ctrl_stall) begin
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display(
                     "[%0t] *[fetch] stage works on pc=0x%h jump=(0x%h,%b)",
                     $time, pc, pc_jump_target, ctrl_is_jump);
@@ -114,7 +121,7 @@ module fetcher(
             pc_reg <= pc;
             ctrl_is_nop_reg <= 0;
         end else begin
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display("[%0t] =[fetch] stage stalls on pc=0x%h jump=(0x%h,%b)",
                     $time, pc, pc_jump_target, ctrl_is_jump);
             `endif
@@ -131,6 +138,17 @@ module decoder(
     input [31:0] reg2_rdata,
     output [4:0] reg1_raddr,
     output [4:0] reg2_raddr,
+
+    // register forwarding from executor
+    input [31:0] forward_data_exec,
+    input [4:0] ctrl_forward_rd_exec,
+    input ctrl_forward_valid_exec,
+    input ctrl_forward_mload_stall,
+
+    input [31:0] forward_data_mem,
+    input [4:0] ctrl_forward_rd_mem,
+    input ctrl_forward_valid_mem,
+    //
 
     input ctrl_clk,
     input ctrl_reset,
@@ -152,7 +170,6 @@ module decoder(
     output ctrl_is_jump,
     output ctrl_decoder_stall
 );
-    assign ctrl_decoder_stall = 0;
     // Layout: [  7 bits          ][5 bits][5 bits][3 bits][ 5 bits         ][ 7 bits ]
     // R-type: [funct7            ][rs2   ][rs1   ][funct3][rd              ][opcode  ]
     //
@@ -180,23 +197,42 @@ module decoder(
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
     wire is_nop = ctrl_is_nop || (opcode == `XXXI && inst[31:7] == 0) || ctrl_skip_next_reg;
 
+    assign ctrl_decoder_stall = ctrl_forward_mload_stall &&
+                                (((opcode == `XXXI ||
+                                  opcode == `XXX ||
+                                  opcode == `LX ||
+                                  opcode == `SX ||
+                                  opcode == `JALR ||
+                                  opcode == `BXX) && ctrl_forward_rd_exec == rs1) ||
+                                ((opcode == `XXX ||
+                                  opcode == `SX ||
+                                  opcode == `JALR ||
+                                  opcode == `BXX) && ctrl_forward_rd_exec == rs2));
+
     // wire to read from register file
     assign reg1_raddr = rs1;
     assign reg2_raddr = rs2;
 
+    wire [31:0] op1 = (ctrl_forward_valid_exec && rs1 == ctrl_forward_rd_exec) ? forward_data_exec:
+                      (ctrl_forward_valid_mem && rs1 == ctrl_forward_rd_mem) ? forward_data_mem:
+                                                                               reg1_rdata;
+    wire [31:0] op2 = (ctrl_forward_valid_exec && rs2 == ctrl_forward_rd_exec) ? forward_data_exec:
+                      (ctrl_forward_valid_mem && rs2 == ctrl_forward_rd_mem) ? forward_data_mem:
+                                                                               reg2_rdata;
+
     // set jump signal for control transfer instructions
     assign ctrl_pc_jump_target =
         opcode == `JAL ? pc + $signed({{11{jal_offset[20]}}, jal_offset}) :
-        opcode == `JALR ? reg1_rdata + $signed({{20{jalr_offset[11]}}, jalr_offset}):
+        opcode == `JALR ? op1 + $signed({{20{jalr_offset[11]}}, jalr_offset}):
         opcode == `BXX ? pc + $signed({{19{b_offset[12]}}, b_offset}) : 'bx;
     assign ctrl_is_jump = (!ctrl_skip_next_reg) &&
         (opcode == `JAL ? 1 :
         opcode == `JALR ? 1 :
         opcode == `BXX ?
-              funct3[2:1] == 0 ? ((reg1_rdata == reg2_rdata) ^ (funct3[0])) : // BEQ & BNE
+              funct3[2:1] == 0 ? ((op1 == op2) ^ (funct3[0])) : // BEQ & BNE
                (funct3[1] == 0 ?
-                  (($signed(reg1_rdata) < $signed(reg2_rdata)) ^ (funct3[0])) : // BLT & BGE
-                  ((reg1_rdata < reg2_rdata) ^ (funct3[0]))) : 0); // BLTU & BGEU
+                  (($signed(op1) < $signed(op2)) ^ (funct3[0])) : // BLT & BGE
+                  ((op1 < op2) ^ (funct3[0]))) : 0); // BLTU & BGEU
 
     assign _debug_pc_addr = is_nop ? 'hffffffff : pc;
 
@@ -206,14 +242,14 @@ module decoder(
             ctrl_is_nop_reg <= 1;
         end else if (!ctrl_stall) begin
             if (!is_nop) begin
-                `ifndef SYNTHESIS
+                `ifdef PIPELINE_DEBUG
                     $display(
                         "[%0t] *[decode] stage works on inst=0x%h pc=0x%h rs1=0x%h rs2=0x%h skip=%b",
-                        $time, inst, pc, reg1_rdata, reg2_rdata, ctrl_skip_next_reg);
+                        $time, inst, pc, op1, op2, ctrl_skip_next_reg);
                 `endif
                 case (opcode)
                     `XXXI: begin
-                        op1_reg <= reg1_rdata;
+                        op1_reg <= op1;
                         op2_reg <= xxxi;
                         ctrl_alu_func_reg <= funct3;
                         ctrl_alu_sign_ext_reg <= funct3 == `FSRX ? inst[30] : 0;
@@ -221,8 +257,8 @@ module decoder(
                         ctrl_mem_reg <= 5'b00000;
                     end
                     `XXX: begin
-                        op1_reg <= reg1_rdata;
-                        op2_reg <= reg2_rdata;
+                        op1_reg <= op1;
+                        op2_reg <= op2;
                         ctrl_alu_func_reg <= funct3;
                         ctrl_alu_sign_ext_reg <= inst[30];
                         ctrl_wb_reg <= 1;
@@ -245,7 +281,7 @@ module decoder(
                         ctrl_mem_reg <= 5'b00000;
                     end
                     `LX: begin
-                        op1_reg <= reg1_rdata;
+                        op1_reg <= op1;
                         op2_reg <= {{20{l_offset[11]}}, l_offset};
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
@@ -253,9 +289,9 @@ module decoder(
                         ctrl_mem_reg <= {funct3, 2'b10};
                     end
                     `SX: begin
-                        op1_reg <= reg1_rdata;
+                        op1_reg <= op1;
                         op2_reg <= {{20{s_offset[11]}}, s_offset};
-                        src_reg <= reg2_rdata;
+                        src_reg <= op2;
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 0;
@@ -277,17 +313,17 @@ module decoder(
                 rd_reg <= rd;
                 ctrl_skip_next_reg <= ctrl_is_jump;
             end else begin // NOP or a bubble
-                `ifndef SYNTHESIS
+                `ifdef PIPELINE_DEBUG
                     $display("[%0t]  [decode] stage idle", $time);
                 `endif
                 ctrl_skip_next_reg <= 0;
             end
             ctrl_is_nop_reg <= is_nop;
         end else begin // stalled
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display(
                     "[%0t] =[decode] stage stalls on inst=0x%h pc=0x%h rs1=0x%h rs2=0x%h skip=%b",
-                    $time, inst, pc, reg1_rdata, reg2_rdata, ctrl_skip_next_reg);
+                    $time, inst, pc, op1, op2, ctrl_skip_next_reg);
             `endif
             if (!ctrl_next_stage_stall) // insert a bubble
                 ctrl_is_nop_reg <= 1;
@@ -317,42 +353,51 @@ module executor(
     output reg ctrl_is_nop_reg,
     output reg ctrl_wb_reg,
     output reg [4:0] ctrl_mem_reg,
+    output [31:0] forward_data,
+    output [4:0] ctrl_forward_rd,
+    output ctrl_forward_valid,
+    output ctrl_forward_mload_stall,
     output ctrl_executor_stall
 );
     assign ctrl_executor_stall = 0;
+    assign ctrl_forward_valid = ctrl_wb && (!ctrl_mem[1]);
+    assign ctrl_forward_mload_stall = (!ctrl_is_nop) && ctrl_mem[1:0] == 'b10;
+    assign ctrl_forward_rd = rd;
+    // ALU
+    wire [31:0] res = ctrl_alu_func == `FADD ? (ctrl_alu_sign_ext ? op1 - op2 : op1 + op2) :
+               ctrl_alu_func == `FSLT ? ($signed(op1) < $signed(op2) ? 1 : 0) :
+               ctrl_alu_func == `FSLTU ? (op1 < op2 ? 1 : 0) :
+               ctrl_alu_func == `FXOR ? (op1 ^ op2) :
+               ctrl_alu_func == `FOR ? (op1 | op2) :
+               ctrl_alu_func == `FAND ? (op1 & op2) :
+               ctrl_alu_func == `FSLL ? (op1 << op2[4:0]) :
+               ctrl_alu_func == `FSRX ? (ctrl_alu_sign_ext ? $signed(op1) >> op2[4:0] : op1 >> op2[4:0]) : 'bx;
+    assign forward_data = res;
+
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset)
             ctrl_is_nop_reg <= 1;
         else if (!ctrl_stall) begin
             if (!ctrl_is_nop) begin
-                `ifndef SYNTHESIS
+                `ifdef PIPELINE_DEBUG
                     $display(
                         "[%0t] *[execution] stage works on op1=0x%h op2=0x%h src=0x%h rd=%d sign=%b",
                         $time, op1, op2, src, rd, ctrl_alu_sign_ext
                     );
                 `endif
-                case (ctrl_alu_func)
-                    `FADD: res_reg <= ctrl_alu_sign_ext ? op1 - op2 : op1 + op2;
-                    `FSLT: res_reg <= $signed(op1) < $signed(op2) ? 1 : 0;
-                    `FSLTU: res_reg <= op1 < op2 ? 1 : 0;
-                    `FXOR: res_reg <= op1 ^ op2;
-                    `FOR: res_reg <= op1 | op2;
-                    `FAND: res_reg <= op1 & op2;
-                    `FSLL: res_reg <= op1 << op2[4:0];
-                    `FSRX: res_reg <= ctrl_alu_sign_ext ? $signed(op1) >> op2[4:0] : op1 >> op2[4:0];
-                endcase
+                res_reg <= res;
                 src_reg <= src;
                 rd_reg <= rd;
                 ctrl_wb_reg <= ctrl_wb;
                 ctrl_mem_reg <= ctrl_mem;
             end else begin
-                `ifndef SYNTHESIS
+                `ifdef PIPELINE_DEBUG
                     $display("[%0t]  [execution] stage idle", $time);
                 `endif
             end
             ctrl_is_nop_reg <= ctrl_is_nop;
         end else begin
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display(
                     "[%0t] =[execution] stage stalls on op1=0x%h op2=0x%h src=0x%h rd=%d sign=%b",
                     $time, op1, op2, src, rd, ctrl_alu_sign_ext
@@ -390,6 +435,9 @@ module memory(
     output reg [4:0] rd_reg,
     output reg ctrl_is_nop_reg,
     output reg ctrl_wb_reg,
+    output [31:0] forward_data,
+    output [4:0] ctrl_forward_rd,
+    output ctrl_forward_valid,
     output ctrl_mem_stall
 );
     assign dcache_req = !ctrl_is_nop && ctrl_mem[1];
@@ -397,37 +445,43 @@ module memory(
     assign dcache_ws = ctrl_mem[3:2]; // SB/SH/SW
     assign dcache_wdata = src;
     assign dcache_addr = res_alu;
+
     assign ctrl_mem_stall = dcache_req && (!dcache_rdy);
+    assign ctrl_forward_valid = ctrl_wb;
+    assign ctrl_forward_rd = rd;
+
     wire sgn = ctrl_mem[4];
+
+    wire [31:0] res_mem =
+        dcache_ws == 'b00 ? {{24{sgn ? dcache_rdata[7] : 1'b0}}, dcache_rdata[7:0]} : // LB/LBU
+        dcache_ws == 'b01 ? {{16{sgn ? dcache_rdata[15] : 1'b0}}, dcache_rdata[15:0]} : // LH/LHU
+        dcache_ws == 'b10 ? dcache_rdata : // LW
+                            'bx;
+    wire [31:0] res = (ctrl_mem[1:0] == 2'b10) ? res_mem : res_alu;
+    assign forward_data = res;
+
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset)
             ctrl_is_nop_reg <= 1;
         else if (!ctrl_stall) begin
             if (!ctrl_is_nop) begin
-                `ifndef SYNTHESIS
+                `ifdef PIPELINE_DEBUG
                     $display(
                         "[%0t] *[memory] stage works on res_alu=0x%h src=0x%h rd=%d ctrl_wb=%b ctrl_mem=%5b",
                         $time, res_alu, src, rd, ctrl_wb, ctrl_mem
                     );
                 `endif
-                if (ctrl_mem[1:0] == 2'b10)
-                    case (dcache_ws)
-                        'b00: res_reg <= {{24{sgn ? dcache_rdata[7] : 1'b0}}, dcache_rdata[7:0]}; // LB/LBU
-                        'b01: res_reg <= {{16{sgn ? dcache_rdata[15] : 1'b0}}, dcache_rdata[15:0]}; // LH/LHU
-                        'b10: res_reg <= dcache_rdata; // LW
-                    endcase
-                else
-                    res_reg <= res_alu;
+                res_reg <= res;
                 rd_reg <= rd;
                 ctrl_wb_reg <= ctrl_wb;
             end else begin
-                `ifndef SYNTHESIS
+                `ifdef PIPELINE_DEBUG
                     $display("[%0t]  [memory] stage idle", $time);
                 `endif
             end
             ctrl_is_nop_reg <= ctrl_is_nop;
         end else begin
-            `ifndef SYNTHESIS
+            `ifdef PIPELINE_DEBUG
                 $display(
                     "[%0t] =[memory] stage stalls on res_alu=0x%h src=0x%h rd=%d ctrl_wb=%b ctrl_mem=%5b",
                     $time, res_alu, src, rd, ctrl_wb, ctrl_mem);
@@ -555,6 +609,15 @@ module pipeline (
     wire ctrl_wb_decode;
     wire [4:0] ctrl_mem_decode;
 
+    wire [31:0] forward_data_exec;
+    wire [4:0] ctrl_forward_rd_exec;
+    wire ctrl_forward_valid_exec;
+    wire ctrl_forward_mload_stall;
+
+    wire [31:0] forward_data_mem;
+    wire [4:0] ctrl_forward_rd_mem;
+    wire ctrl_forward_valid_mem;
+
     decoder decode_stage(
         .inst(inst_reg_fetch),
         .pc(pc_reg_fetch),
@@ -562,11 +625,21 @@ module pipeline (
         .reg2_raddr(reg2_raddr),
         .reg1_rdata(reg1_rdata),
         .reg2_rdata(reg2_rdata),
+
+        .forward_data_exec(forward_data_exec),
+        .ctrl_forward_rd_exec(ctrl_forward_rd_exec),
+        .ctrl_forward_valid_exec(ctrl_forward_valid_exec),
+        .ctrl_forward_mload_stall(ctrl_forward_mload_stall),
+        .forward_data_mem(forward_data_mem),
+        .ctrl_forward_rd_mem(ctrl_forward_rd_mem),
+        .ctrl_forward_valid_mem(ctrl_forward_valid_mem),
+
         .ctrl_clk(clock),
         .ctrl_reset(reset),
         .ctrl_stall(ctrl_decoder_stall_in),
         .ctrl_next_stage_stall(ctrl_executor_stall_in),
         .ctrl_is_nop(ctrl_is_nop_fetch),
+
         .op1_reg(op1),
         .op2_reg(op2),
         .src_reg(src_decode),
@@ -609,6 +682,10 @@ module pipeline (
         .ctrl_is_nop_reg(ctrl_is_nop_exec),
         .ctrl_wb_reg(ctrl_wb_exec),
         .ctrl_mem_reg(ctrl_mem_exec),
+        .forward_data(forward_data_exec),
+        .ctrl_forward_rd(ctrl_forward_rd_exec),
+        .ctrl_forward_valid(ctrl_forward_valid_exec),
+        .ctrl_forward_mload_stall(ctrl_forward_mload_stall),
         .ctrl_executor_stall(ctrl_executor_stall)
     );
 
@@ -639,6 +716,9 @@ module pipeline (
         .rd_reg(rd_mem),
         .ctrl_is_nop_reg(ctrl_is_nop_mem),
         .ctrl_wb_reg(ctrl_wb_mem),
+        .forward_data(forward_data_mem),
+        .ctrl_forward_rd(ctrl_forward_rd_mem),
+        .ctrl_forward_valid(ctrl_forward_valid_mem),
         .ctrl_mem_stall(ctrl_mem_stall)
     );
 

@@ -4,5 +4,10 @@
 _start:
     lui sp, 0x200
     call main
+	nop
+	nop
+	nop
+	nop
+	nop
 halt:
     beq x0, x0, halt
