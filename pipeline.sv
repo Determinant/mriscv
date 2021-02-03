@@ -57,7 +57,7 @@ module register_file(
     input ctrl_clk //< clock
 );
     // register file
-    reg [31:0] regs [31:0];
+    logic [31:0] regs [31:0];
     wire writing = reg_wen && reg_waddr != 0;
     assign reg1_rdata = writing && reg_waddr == reg1_raddr ? reg_wdata : regs[reg1_raddr];
     assign reg2_rdata = writing && reg_waddr == reg2_raddr ? reg_wdata : regs[reg2_raddr];
@@ -94,12 +94,12 @@ module fetcher(
     input [31:0] icache_data,
     input icache_rdy,
 
-    output reg [31:0] inst_reg,
-    output reg [31:0] pc_reg,
-    output reg ctrl_is_nop_reg,
+    output logic [31:0] inst_reg,
+    output logic [31:0] pc_reg,
+    output logic ctrl_is_nop_reg,
     output ctrl_fetcher_stall
 );
-    reg [31:0] pc;
+    logic [31:0] pc;
     assign icache_addr = pc;
     assign icache_req = 1;
     assign ctrl_fetcher_stall = !icache_rdy;
@@ -157,15 +157,15 @@ module decoder(
     input ctrl_is_nop,
     output [31:0]_debug_pc_addr,
 
-    output reg [31:0] op1_reg,
-    output reg [31:0] op2_reg,
-    output reg [4:0] rd_reg,
-    output reg [31:0] src_reg,
-    output reg [2:0] ctrl_alu_func_reg,
-    output reg ctrl_alu_sign_ext_reg,
-    output reg ctrl_is_nop_reg,
-    output reg ctrl_wb_reg,
-    output reg [4:0] ctrl_mem_reg,
+    output logic [31:0] op1_reg,
+    output logic [31:0] op2_reg,
+    output logic [4:0] rd_reg,
+    output logic [31:0] src_reg,
+    output logic [2:0] ctrl_alu_func_reg,
+    output logic ctrl_alu_sign_ext_reg,
+    output logic ctrl_is_nop_reg,
+    output logic ctrl_wb_reg,
+    output logic [4:0] ctrl_mem_reg,
     output [31:0] ctrl_pc_jump_target,
     output ctrl_is_jump,
     output ctrl_decoder_stall
@@ -182,7 +182,7 @@ module decoder(
     //          |____ sign
 
     // instruction fields
-    reg ctrl_skip_next_reg;
+    logic ctrl_skip_next_reg;
     wire [6:0] opcode = inst[6:0];
     wire [2:0] funct3 = inst[14:12];
     wire [4:0] rs1 = inst[19:15];
@@ -350,12 +350,12 @@ module executor(
     input ctrl_wb,
     input [4:0] ctrl_mem,
 
-    output reg [31:0] res_reg,
-    output reg [31:0] src_reg,
-    output reg [4:0] rd_reg,
-    output reg ctrl_is_nop_reg,
-    output reg ctrl_wb_reg,
-    output reg [4:0] ctrl_mem_reg,
+    output logic [31:0] res_reg,
+    output logic [31:0] src_reg,
+    output logic [4:0] rd_reg,
+    output logic ctrl_is_nop_reg,
+    output logic ctrl_wb_reg,
+    output logic [4:0] ctrl_mem_reg,
     output [31:0] forward_data,
     output [4:0] ctrl_forward_rd,
     output ctrl_forward_valid,
@@ -434,10 +434,10 @@ module memory(
     input ctrl_is_nop,
     input [4:0] ctrl_mem,
 
-    output reg [31:0] res_reg,
-    output reg [4:0] rd_reg,
-    output reg ctrl_is_nop_reg,
-    output reg ctrl_wb_reg,
+    output logic [31:0] res_reg,
+    output logic [4:0] rd_reg,
+    output logic ctrl_is_nop_reg,
+    output logic ctrl_wb_reg,
     output [31:0] forward_data,
     output [4:0] ctrl_forward_rd,
     output ctrl_forward_valid,
@@ -535,7 +535,6 @@ module pipeline (
 );
     // program counter
 
-    //wire [31:0] pc_reg_next_fetch;
     wire [31:0] pc_jump_target;
     wire ctrl_is_jump;
     wire ctrl_fetcher_stall;
