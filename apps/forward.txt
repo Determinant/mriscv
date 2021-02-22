@@ -1,0 +1,60 @@
+
+forward.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00000000 <_start>:
+   0:	00200137          	lui	x2,0x200
+   4:	01c000ef          	jal	x1,20 <main>
+   8:	00000013          	addi	x0,x0,0
+   c:	00000013          	addi	x0,x0,0
+  10:	00000013          	addi	x0,x0,0
+  14:	00000013          	addi	x0,x0,0
+  18:	00000013          	addi	x0,x0,0
+
+0000001c <halt>:
+  1c:	00000063          	beq	x0,x0,1c <halt>
+
+00000020 <main>:
+  20:	02a00193          	addi	x3,x0,42
+  24:	00118193          	addi	x3,x3,1
+  28:	00000013          	addi	x0,x0,0
+  2c:	00000013          	addi	x0,x0,0
+  30:	00000013          	addi	x0,x0,0
+  34:	00000013          	addi	x0,x0,0
+  38:	fe312e23          	sw	x3,-4(x2) # 1ffffc <main+0x1fffdc>
+  3c:	00000013          	addi	x0,x0,0
+  40:	00000013          	addi	x0,x0,0
+  44:	00000013          	addi	x0,x0,0
+  48:	00000013          	addi	x0,x0,0
+  4c:	ffc12203          	lw	x4,-4(x2)
+  50:	00120293          	addi	x5,x4,1 # 1 <_start+0x1>
+  54:	00000013          	addi	x0,x0,0
+  58:	00000013          	addi	x0,x0,0
+  5c:	00000013          	addi	x0,x0,0
+  60:	00000013          	addi	x0,x0,0
+  64:	01400313          	addi	x6,x0,20
+  68:	00000013          	addi	x0,x0,0
+  6c:	00130313          	addi	x6,x6,1
+  70:	00000013          	addi	x0,x0,0
+  74:	00000013          	addi	x0,x0,0
+  78:	00000013          	addi	x0,x0,0
+  7c:	00000013          	addi	x0,x0,0
+  80:	fe512e23          	sw	x5,-4(x2)
+  84:	ffc12203          	lw	x4,-4(x2)
+  88:	00120213          	addi	x4,x4,1 # 1 <_start+0x1>
+  8c:	fe412e23          	sw	x4,-4(x2)
+  90:	00000013          	addi	x0,x0,0
+  94:	00000013          	addi	x0,x0,0
+  98:	00000013          	addi	x0,x0,0
+  9c:	00000013          	addi	x0,x0,0
+  a0:	ffc12183          	lw	x3,-4(x2)
+  a4:	00000013          	addi	x0,x0,0
+  a8:	00000013          	addi	x0,x0,0
+  ac:	00118193          	addi	x3,x3,1
+  b0:	00000013          	addi	x0,x0,0
+  b4:	00000013          	addi	x0,x0,0
+  b8:	00000013          	addi	x0,x0,0
+  bc:	00000013          	addi	x0,x0,0
+  c0:	00008067          	jalr	x0,0(x1)

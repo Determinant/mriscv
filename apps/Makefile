@@ -1,9 +1,13 @@
-.PHONY: all
+.PHONY: all clean
 
-all: \
-	add.txt add.bin add.elf \
-	queens.txt queens.bin queens.elf \
-	forward.txt forward.bin forward.elf
+OBJS :=	add.txt add.bin add.elf \
+		queens.txt queens.bin queens.elf \
+		forward.txt forward.bin forward.elf
+
+all: $(OBJS)
+
+clean:
+	rm -f $(OBJS)
 
 %.elf: %.c startup.s
 	riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -O0 -nostdlib -Wl,-Tlink.x -g -o $@ startup.s $<

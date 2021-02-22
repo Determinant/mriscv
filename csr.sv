@@ -112,14 +112,18 @@ module csr_file(
     logic [31:0] mtvec;
     logic [31:0] mscratch;
     logic [31:0] mepc;
+    logic [31:0] mcause;
+    logic [31:0] mtval;
 
     assign rdata = (addr == `CSR_MISA) ? misa :
                    (addr == `CSR_MSTATUS) ? mstatus :
                    (addr == `CSR_MIE) ? mie :
                    (addr == `CSR_MTVEC) ? mtvec :
-                   (addr == `CSR_MIP) ? mip :
                    (addr == `CSR_MSCRATCH) ? mscratch :
                    (addr == `CSR_MEPC) ? mepc :
+                   (addr == `CSR_MCAUSE) ? mcause :
+                   (addr == `CSR_MTVAL) ? mtval :
+                   (addr == `CSR_MIP) ? mip :
                                             'bx;
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
@@ -137,9 +141,18 @@ module csr_file(
                 `CSR_MISA: misa <= (misa & (~misa_mask)) | (wdata & misa_mask);
                 `CSR_MIE: mie <= (mie & (~mi_mask)) | (wdata & mi_mask);
                 `CSR_MTVEC: mtvec <= (wdata[1:0] < 2) ? wdata : mtvec;
-                `CSR_MIP: mip <= (mip & (~mi_mask)) | (wdata & mi_mask);
                 `CSR_MSCRATCH: mscratch <= wdata;
                 `CSR_MEPC: mepc <= mepc & {{30{1'b1}}, 2'b00};
+                `CSR_MCAUSE: mcause <=
+                    (wdata[31] ? (wdata[30:0] < 12 &&
+                                  wdata[30:0] != 2 &&
+                                  wdata[30:0] != 6 &&
+                                  wdata[30:0] != 10) :
+                                 (wdata[30:0] < 16 &&
+                                  wdata[30:0] != 10 &&
+                                  wdata[30:0] != 14)) ? wdata : mcause;
+                `CSR_MTVAL: mtval <= wdata;
+                `CSR_MIP: mip <= (mip & (~mi_mask)) | (wdata & mi_mask);
             endcase
         end
     end
