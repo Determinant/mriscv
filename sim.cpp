@@ -1,6 +1,10 @@
 #include <cstdio>
 #include <memory>
 #include <vector>
+#include <cstdlib>
+#include <cassert>
+#include <exception>
+#include <getopt.h>
 #include "verilated.h"
 #include "Vcpu.h"
 
@@ -170,15 +174,48 @@ struct SoC {
     }
 };
 
+static struct option long_options[] = {
+    {"load-image", required_argument, 0, 'l'},
+};
+
+void die(const char *s) {
+    fprintf(stderr, "error: %s\n", s);
+    exit(1);
+}
+
 int main(int argc, char** argv) {
-    Verilated::commandArgs(argc, argv);
+    int optidx = 0;
     auto soc = SoC(std::make_shared<Vcpu>(), 32 << 20);
+    for (;;)
+    {
+        int c = getopt_long(argc, argv, "l:", long_options, &optidx);
+        if (c == -1) break;
+        switch (c)
+        {
+            case 'l':
+                {
+                    std::string arg{optarg};
+                    auto pos = arg.find("=");
+                    if (pos == std::string::npos)
+                        die("invalid image spec, should be in the form of `<filename>=<hex location>`");
+                    FILE *img = fopen(arg.substr(0, pos).c_str(), "r");
+                    if (img)
+                    {
+                        size_t t;
+                        try {
+                            auto loc = std::stoul(arg.substr(pos + 1).c_str(), &t, 16);
+                            soc.ram.load_image_from_file(img, loc);
+                        } catch (...) {
+                            die("invalid image location");
+                        }
+                        fclose(img);
+                    }
+                    break;
+                }
+        }
+    }
+    Verilated::commandArgs(argc, argv);
     soc.reset();
-    //FILE *img = fopen("tests/add.bin", "r");
-    FILE *img = fopen("tests/queens.bin", "r");
-    //FILE *img = fopen("tests/forward.bin", "r");
-    soc.ram.load_image_from_file(img, 0x0);
-    fclose(img);
     printf("reset\n");
     while (!Verilated::gotFinish()) {
         soc.next_tick();
