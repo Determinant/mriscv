@@ -5,9 +5,11 @@ SECTIONS
     .text : {
         KEEP(*(.text))
     } > FLASH
-
     .data : {
         *(.data)
     } > RAM
+    .note.gnu.build-id : {
+        *(.note.gnu.build-id)
+    } > FLASH
     /DISCARD/ : {*(*)}
 }
