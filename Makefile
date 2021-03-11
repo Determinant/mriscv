@@ -8,7 +8,7 @@ clean:
 	rm -r cpu_cc
 	rm sim
 
-cpu_cc: cpu.sv pipeline.sv
+cpu_cc: cpu.sv pipeline.sv csr_file.sv
 	verilator cpu.sv --Mdir $@ --cc -Wall -Wno-style +define+DEBUG
 cpu_cc/Vcpu__ALL.a: cpu_cc cpu_cc/Vcpu.cpp
 	make -C cpu_cc -f Vcpu.mk

@@ -227,9 +227,10 @@ module decoder(
     assign reg2_raddr = rs2;
     assign csr_addr = csr;
 
-    wire [31:0] op1 = (ctrl_forward_valid_exec && rs1 == ctrl_forward_rd_exec) ? forward_data_exec:
+    wire [31:0] op1 = (opcode == `SYS && funct3 != 0) ? csr_rdata :
+                      (ctrl_forward_valid_exec && rs1 == ctrl_forward_rd_exec) ? forward_data_exec:
                       (ctrl_forward_valid_mem && rs1 == ctrl_forward_rd_mem) ? forward_data_mem:
-                        ((opcode == `SYS && funct3 != 0) ? csr_rdata : reg1_rdata);
+                                                                               reg1_rdata;
     wire [31:0] op2 = (ctrl_forward_valid_exec && rs2 == ctrl_forward_rd_exec) ? forward_data_exec:
                       (ctrl_forward_valid_mem && rs2 == ctrl_forward_rd_mem) ? forward_data_mem:
                                                                                reg2_rdata;
@@ -240,7 +241,7 @@ module decoder(
         csr_func == `CSRRW ? csr_src :
         csr_func == `CSRRS ? (csr_rdata | csr_src) :
         csr_func == `CSRRC ? (csr_rdata & (~csr_src)) : 'bx;
-    assign csr_wen = csr_func != 0;
+    assign csr_wen = csr_func != 0 && rs1 != 0;
 
     // set jump signal for control transfer instructions
     assign ctrl_pc_jump_target =

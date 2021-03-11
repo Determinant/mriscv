@@ -106,6 +106,8 @@ module csr_file(
             mtvec <= 'h00000000;
             mscratch <= 'h00000000;
             mepc <= 'h00000000;
+            mcause <= 'h00000000;
+            mtval <= 'h00000000;
         end
         if (wen) begin
             case (addr)
