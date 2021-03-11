@@ -1,10 +1,13 @@
 #![no_std]
 #![no_main]
 
+extern crate panic_halt;
 use riscv_rt::entry;
 
-extern crate panic_halt;
-extern crate riscv_rt;
+#[export_name="DefaultHandler"]
+fn my_interrupt_handler() {
+    panic!("hi");
+}
 
 #[entry]
 fn main() -> ! {
@@ -12,8 +15,10 @@ fn main() -> ! {
     //let cpu = mos6502::CPU::new();
 
     let mut a = 1;
-    loop {
+    for _ in 0..4 {
         let _c = a * 3;
         a += 1;
     }
+
+    loop {}
 }

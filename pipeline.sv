@@ -1,3 +1,4 @@
+`include "csr_file.sv"
 // opcode
 
 `define LUI     7'b0110111
@@ -12,7 +13,7 @@
 
 // the following is not supported yet
 `define FEN     7'b0001111 // FENCE
-`define EXX     7'b1110011 // ECALL, EBREAK
+`define SYS     7'b1110011 // ECALL, EBREAK, CSRx
 
 // funct3 code
 
@@ -37,6 +38,10 @@
 `define FW      3'b010
 `define FBU     3'b100
 `define FHU     3'b101
+
+`define CSRRW   2'b01
+`define CSRRS   2'b10
+`define CSRRC   2'b11
 
 `ifndef SYNTHESIS
     `ifdef DEBUG
@@ -136,8 +141,12 @@ module decoder(
     input [31:0] pc,
     input [31:0] reg1_rdata,
     input [31:0] reg2_rdata,
+    input [31:0] csr_rdata,
     output [4:0] reg1_raddr,
     output [4:0] reg2_raddr,
+    output [11:0] csr_addr,
+    output [31:0] csr_wdata,
+    output csr_wen,
 
     // register forwarding from executor
     input [31:0] forward_data_exec,
@@ -195,6 +204,7 @@ module decoder(
     wire [12:0] b_offset = {inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
     wire [11:0] l_offset = inst[31:20];
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
+    wire [11:0] csr = inst[31:20];
     wire is_nop = ctrl_is_nop ||
                   ctrl_skip_next_reg ||
                   (opcode == `XXXI && inst[31:7] == 0) ||
@@ -215,13 +225,22 @@ module decoder(
     // wire to read from register file
     assign reg1_raddr = rs1;
     assign reg2_raddr = rs2;
+    assign csr_addr = csr;
 
     wire [31:0] op1 = (ctrl_forward_valid_exec && rs1 == ctrl_forward_rd_exec) ? forward_data_exec:
                       (ctrl_forward_valid_mem && rs1 == ctrl_forward_rd_mem) ? forward_data_mem:
-                                                                               reg1_rdata;
+                        ((opcode == `SYS && funct3 != 0) ? csr_rdata : reg1_rdata);
     wire [31:0] op2 = (ctrl_forward_valid_exec && rs2 == ctrl_forward_rd_exec) ? forward_data_exec:
                       (ctrl_forward_valid_mem && rs2 == ctrl_forward_rd_mem) ? forward_data_mem:
                                                                                reg2_rdata;
+    // CSR
+    wire [1:0] csr_func = funct3[1:0];
+    wire [31:0] csr_src = funct3[2] ? {27'b0, rs1} : op1;
+    assign csr_wdata =
+        csr_func == `CSRRW ? csr_src :
+        csr_func == `CSRRS ? (csr_rdata | csr_src) :
+        csr_func == `CSRRC ? (csr_rdata & (~csr_src)) : 'bx;
+    assign csr_wen = csr_func != 0;
 
     // set jump signal for control transfer instructions
     assign ctrl_pc_jump_target =
@@ -307,6 +326,14 @@ module decoder(
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 1;
                         ctrl_mem_reg <= {funct3, 2'b00};
+                    end
+                    `SYS: begin
+                        op1_reg <= csr_rdata;
+                        op2_reg <= 0;
+                        ctrl_alu_func_reg <= `FADD;
+                        ctrl_alu_sign_ext_reg <= 0;
+                        ctrl_wb_reg <= funct3 != 0; // all CSR instructions writes to rd
+                        ctrl_mem_reg <= 5'b00000;
                     end
                     default: begin // TODO: illegal instruction detection
                         ctrl_wb_reg <= 0;
@@ -544,11 +571,26 @@ module pipeline (
     wire ctrl_writeback_stall;
     wire [4:0] reg1_raddr;
     wire [4:0] reg2_raddr;
+    wire [11:0] csr_addr;
     wire [31:0] reg1_rdata;
     wire [31:0] reg2_rdata;
+    wire [31:0] csr_rdata;
+    wire [31:0] csr_wdata;
+    wire csr_wen;
     wire [4:0] reg_waddr;
     wire [31:0] reg_wdata;
     wire reg_wen;
+
+    csr_file csv_reg(
+        .addr(csr_addr),
+        .wdata(csr_wdata),
+        .wen(csr_wen),
+        .rdata(csr_rdata),
+        .ctrl_clk(clock),
+        .ctrl_reset(reset),
+        .ctrl_mie(),
+        .ctrl_mpie()
+    );
 
     register_file main_reg(
         .reg1_raddr(reg1_raddr),
@@ -625,8 +667,12 @@ module pipeline (
         .pc(pc_reg_fetch),
         .reg1_raddr(reg1_raddr),
         .reg2_raddr(reg2_raddr),
+        .csr_addr(csr_addr),
         .reg1_rdata(reg1_rdata),
         .reg2_rdata(reg2_rdata),
+        .csr_rdata(csr_rdata),
+        .csr_wdata(csr_wdata),
+        .csr_wen(csr_wen),
 
         .forward_data_exec(forward_data_exec),
         .ctrl_forward_rd_exec(ctrl_forward_rd_exec),
