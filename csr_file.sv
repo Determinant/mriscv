@@ -35,8 +35,8 @@ module csr_file(
 
     output [31:0] rdata,
 
-    output ctrl_mie,
-    output ctrl_mpie
+    output ctrl_mie, // whether interrupts are globally enabled
+    output ctrl_mpie // holds the value of the interrupt-enable bit active prior to the trap
 );
     // misa: RV32I
     logic [31:0] misa;
@@ -75,8 +75,8 @@ module csr_file(
     // mip/mie
     logic [31:0] mip;
     logic [31:0] mie;
-    localparam [31:0] mi_mask = {{20{1'b0}}, 12'b0_0_0_0_0_0_0_0_0_0_0_0};
-    // MEIP_(WPRI)_SEIP_UEIP_MTIP_WPRI_STIP_UTIP_MSIP_(WPRI)_SSIP_USIP
+    localparam [31:0] mi_mask = {{16{1'b1}}, 4'b0, 12'b1_0_0_0_1_0_0_0_1_0_0_0};
+    // MEIx_(WPRI)_SEIx_UEIx_MTIx_WPRI_STIx_UTIx_MSIx_(WPRI)_SSIx_USIx
 
     logic [31:0] mtvec;
     logic [31:0] mscratch;
