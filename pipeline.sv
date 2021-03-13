@@ -135,7 +135,7 @@ module fetcher(
 );
     logic [31:0] pc;
 
-    wire ins_aligned = (pc & 'b11) == 0;
+    wire ins_aligned = pc[1:0] == 0;
     assign icache_addr = pc;
     assign icache_req = ins_aligned;
     assign ctrl_fetcher_stall = ins_aligned && !icache_rdy;
@@ -286,7 +286,7 @@ module decoder(
                                                                                reg2_rdata;
     // CSR
     assign csr_raddr = csr;
-    wire [31:0] csr_op1 = (ctrl_forward_csr_valid_exec && csr == ctrl_forward_csr_rd_exec) ? forward_csr_data_exec:
+    wire [31:0] csr_op = (ctrl_forward_csr_valid_exec && csr == ctrl_forward_csr_rd_exec) ? forward_csr_data_exec:
                           (ctrl_forward_csr_valid_mem && csr == ctrl_forward_csr_rd_mem) ? forward_csr_data_mem:
                                                                                             csr_rdata;
     wire [1:0] csr_func = funct3[1:0];
@@ -383,7 +383,7 @@ module decoder(
                         ctrl_mem_reg <= 0; //{funct3, 2'b00};
                     end
                     `SYS: begin
-                        op1_reg <= csr_op1;
+                        op1_reg <= csr_op;
                         op2_reg <= 0;
                         exc_reg <= exc;
                         rd_csr_reg <= csr;
@@ -891,8 +891,8 @@ module pipeline (
 
         .ctrl_clk(clock),
         .ctrl_reset(reset),
-        .ctrl_stall(ctrl_decoder_stall_in),
         .ctrl_exc(ctrl_exc),
+        .ctrl_stall(ctrl_decoder_stall_in),
         .ctrl_next_stage_stall(ctrl_executor_stall_in),
         .ctrl_nop(ctrl_nop_if_o),
 
