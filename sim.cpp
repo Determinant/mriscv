@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
     while (!Verilated::gotFinish()) {
         soc.next_tick();
         puts("===");
-        if (soc.cpu->_debug_pc_addr == halt_addr)
+        if (soc.cpu->_debug_pc == halt_addr)
         {
             soc.halt();
             break;
