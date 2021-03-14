@@ -26,6 +26,12 @@
 // WLRL: Write/Read Only Legal Values
 // WARL: Write Any Values, Reads Legal Values
 
+`ifndef SYNTHESIS
+    `ifdef DEBUG
+        `define PIPELINE_DEBUG
+    `endif
+`endif
+
 module csr_file(
     input [11:0] raddr1,
     input [11:0] raddr2,
@@ -36,10 +42,12 @@ module csr_file(
     input [11:0] waddr,
     input [31:0] wdata,
 
-    input [31:0] pc,
+    input [31:0] trap_pc,
+    input [4:0] trap_info,
     input ctrl_clk,
     input ctrl_reset,
     input ctrl_trap,
+    input ctrl_mret,
     output ctrl_mie, // whether interrupts are globally enabled
     output ctrl_mpie // holds the value of the interrupt-enable bit active prior to the trap
 );
@@ -50,22 +58,20 @@ module csr_file(
     // mstatus
     logic [31:0] mstatus;
     localparam [31:0] mstatus_mask = 'b0_00000000_0_0_0_0_0_0_00_00_00_00_0_1_0_0_0_1_0_0_0;
-    // trap sret (TSR is hard-wired to 0 when S-mode is not supported)
-    // timeout wait (TW is hard-wired to 0 when there are no modes less privileged than M)
-    // trap virtual memory (TVM is hard-wired to 0 when S-mode is not supported)
-    // make executable readable (MXR is hardwired to 0 if S-mode is not supported)
-    // supervisor user memory access (SUM is hardwired to 0 if S-mode is not supported)
-    // modify privilege (MPRV is hardwired to 0 if U-mode is not supported)
-    // previous privilege mode (hardwired to M)
-    assign ctrl_mpie = mstatus[7]; // interrupt-enable bit active prior to the trap
-    assign ctrl_mie = mstatus[3]; // interrupt-enable bit
-    // SD1_(WPRI)_TSR1_TW1_TVM1_MXR1_SUM1_MPRV1_XS2_FS2_MPP2_(WPRI)2_SPP1_MPIE1_(WPRI)1_SPIE1_UPIE1_MIE1_(WPRI)1_SIE1_UIE1
-    // FS is WARL (should always be 0 as we don't support floating-point units)
+    // TSR is hard-wired to 0 when S-mode is not supported.
+    // TW is hard-wired to 0 when there are no modes less privileged than M.
+    // TVM is hard-wired to 0 when S-mode is not supported.
+    // MXR is hardwired to 0 if S-mode is not supported.
+    // SUM is hardwired to 0 if S-mode is not supported.
+    // MPRV is hardwired to 0 if U-mode is not supported.
+    // MPP is hardwired to M.
+    // FS should always be 0 as we don't support floating-point units.
     // XS is RO
     // SD is zero
     // UIE is zero
     // UPIE is zero
-    // MPP/SPP are WARL
+    assign ctrl_mpie = mstatus[7]; // interrupt-enable bit active prior to the trap
+    assign ctrl_mie = mstatus[3]; // interrupt-enable bit
 
     // mip/mie
     logic [31:0] mip;
@@ -82,19 +88,12 @@ module csr_file(
     localparam mhartid = 0; // Hart ID is always 0
     localparam _mhartid = mhartid;
 
-    // when trap:
-    // 0. it is guaranteed that no read/write is on-going and all previous writes are visible
-    // 1. the value of mstatus.MIE is copied into mcause.MPIE, and then
-    // mstatus.MIE is cleared, effectively disabling interrupts.
-    // 2. the current pc is copied into the mepc register
-
-    wire [31:0] _mstatus = ctrl_trap ? {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]} : 
-                                       ((mstatus & (~mstatus_mask)) | (wdata & mstatus_mask));
+    wire [31:0] _mstatus = (mstatus & (~mstatus_mask)) | (wdata & mstatus_mask);
     wire [31:0] _misa = (misa & (~misa_mask)) | (wdata & misa_mask);
     wire [31:0] _mie = (mie & (~mi_mask)) | (wdata & mi_mask);
     wire [31:0] _mtvec = (wdata[1:0] < 2) ? wdata : mtvec;
     wire [31:0] _mscratch = wdata;
-    wire [31:0] _mepc = ctrl_trap ? pc : (mepc & {{30{1'b1}}, 2'b00});
+    wire [31:0] _mepc = {wdata[31:2], 2'b00};
     wire [31:0] _mcause = (wdata[31] ? (wdata[30:0] < 12 &&
                                  wdata[30:0] != 2 &&
                                  wdata[30:0] != 6 &&
@@ -136,7 +135,24 @@ module csr_file(
             mcause <= 'h00000000;
             mtval <= 'h00000000;
         end
-        if (wen) begin
+        if (ctrl_trap) begin
+            // On trap signal:
+            // 0. it is guaranteed that no read/write is on-going and all previous writes are visible
+            // 1. the value of mstatus.MIE is copied into mcause.MPIE, and then
+            // mstatus.MIE is cleared, effectively disabling interrupts.
+            // 2. the current pc is copied into the mepc register
+            mstatus <= {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]};
+            mepc <= trap_pc;
+            mcause <= {trap_info[4], 27'b0, trap_info[3:0]};
+        end else if (ctrl_mret) begin
+            mstatus <= {mstatus[31:8], 1'b0, mstatus[6:4], mstatus[7], mstatus[2:0]};
+        end else if (wen) begin
+            `ifdef PIPELINE_DEBUG
+                $display(
+                    "[%0t] *[wb-csr] write 0x%h to CSR 0x%h",
+                    $time, wdata, waddr
+                );
+            `endif
             case (waddr)
                 `CSR_MSTATUS: mstatus <= _mstatus;
                 `CSR_MISA: misa <= _misa;

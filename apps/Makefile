@@ -2,7 +2,8 @@
 
 OBJS :=	add.txt add.bin add.elf \
 		queens.txt queens.bin queens.elf \
-		forward.txt forward.bin forward.elf
+		forward.txt forward.bin forward.elf \
+		exception.txt exception.bin exception.elf
 
 all: $(OBJS)
 

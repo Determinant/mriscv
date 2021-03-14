@@ -1,0 +1,31 @@
+
+exception.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00000000 <_start>:
+   0:	00200137          	lui	x2,0x200
+   4:	028000ef          	jal	x1,2c <main>
+   8:	00000013          	addi	x0,x0,0
+   c:	00000013          	addi	x0,x0,0
+  10:	00000013          	addi	x0,x0,0
+  14:	00000013          	addi	x0,x0,0
+  18:	00000013          	addi	x0,x0,0
+
+0000001c <halt>:
+  1c:	00000063          	beq	x0,x0,1c <halt>
+
+00000020 <handler>:
+  20:	34202273          	csrrs	x4,mcause,x0
+  24:	004181b3          	add	x3,x3,x4
+  28:	30200073          	mret
+
+0000002c <main>:
+  2c:	00000193          	addi	x3,x0,0
+  30:	00000117          	auipc	x2,0x0
+  34:	ff010113          	addi	x2,x2,-16 # 20 <handler>
+  38:	30511073          	csrrw	x0,mtvec,x2
+  3c:	00000073          	ecall
+  40:	00218193          	addi	x3,x3,2
+  44:	00008067          	jalr	x0,0(x1)
