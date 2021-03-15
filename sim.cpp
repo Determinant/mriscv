@@ -15,7 +15,9 @@
 #endif
 
 uint64_t main_time = 0;
-uint32_t halt_addr = 0x0000001c;
+uint32_t halt_addr = 0x00000000; //0x0010001c;
+
+const uint32_t uart_txdata = 0x00001000;
 
 double sc_time_stamp() {
     return main_time;
@@ -99,30 +101,44 @@ class SimulatedRAM {
                 {
                     auto addr = cpu->dcache_addr;
                     auto data = cpu->dcache_wdata;
-                    if (cpu->dcache_ws == 0)
+
+                    if (addr == uart_txdata)
                     {
-                        debug("dcache: write byte @ %08x = %02x\n", addr, data);
-                        memory[addr] = data & 0xff;
+                        debug("dcache: write uart = %02x\n", addr, data);
+                        putchar((uint8_t)data);
                     }
-                    else if (cpu->dcache_ws == 1)
+                    else
                     {
-                        debug("dcache: write halfword @ %08x = %04x\n", addr, data);
-                        memory[addr] = data & 0xff;
-                        memory[addr + 1] = (data >> 8) & 0xff;
+                        if (cpu->dcache_ws == 0)
+                        {
+                            debug("dcache: write byte @ %08x = %02x\n", addr, data);
+                            memory[addr] = data & 0xff;
+                        }
+                        else if (cpu->dcache_ws == 1)
+                        {
+                            debug("dcache: write halfword @ %08x = %04x\n", addr, data);
+                            memory[addr] = data & 0xff;
+                            memory[addr + 1] = (data >> 8) & 0xff;
+                        }
+                        else if (cpu->dcache_ws == 2)
+                        {
+                            debug("dcache: write word @ %08x = %08x\n", addr, data);
+                            memory[addr] = data & 0xff;
+                            memory[addr + 1] = (data >> 8) & 0xff;
+                            memory[addr + 2] = (data >> 16) & 0xff;
+                            memory[addr + 3] = (data >> 24) & 0xff;
+                        }
+                        else assert(0);
                     }
-                    else if (cpu->dcache_ws == 2)
-                    {
-                        debug("dcache: write word @ %08x = %08x\n", addr, data);
-                        memory[addr] = data & 0xff;
-                        memory[addr + 1] = (data >> 8) & 0xff;
-                        memory[addr + 2] = (data >> 16) & 0xff;
-                        memory[addr + 3] = (data >> 24) & 0xff;
-                    }
-                    else assert(0);
                 }
                 else
                 {
-                    cpu->dcache_rdata = *(uint32_t *)(&memory[0] + cpu->dcache_addr);
+                    if (cpu->dcache_addr == uart_txdata)
+                    {
+                        cpu->dcache_rdata = 0;
+                    }
+                    else
+                        cpu->dcache_rdata = *(uint32_t *)(&memory[0] + cpu->dcache_addr);
                     debug("dcache: read word @ %08x = %08x\n", cpu->dcache_addr, cpu->dcache_rdata);
                 }
                 cpu->dcache_rdy = 1;
@@ -239,6 +255,7 @@ int main(int argc, char** argv) {
         if (soc.cpu->_debug_pc == halt_addr)
         {
             soc.halt();
+            printf("halt the processor at 0x%x\n", halt_addr);
             break;
         }
     }

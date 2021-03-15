@@ -1,6 +1,12 @@
 .PHONY: all clean
 
+GCC_TOOLCHAIN = ./rv32i/
+CC = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-gcc
+OBJDUMP = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objdump
+OBJCOPY = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objcopy
+
 OBJS :=	add.txt add.bin add.elf \
+		hello.txt hello.bin hello.elf \
 		queens.txt queens.bin queens.elf \
 		forward.txt forward.bin forward.elf \
 		exception.txt exception.bin exception.elf
@@ -10,15 +16,21 @@ all: $(OBJS)
 clean:
 	rm -f $(OBJS)
 
-%.elf: %.c startup.s
-	riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -O0 -nostdlib -Wl,-Tlink.x -g -o $@ startup.s $<
+$(CC):
+	[ -d riscv-gnu-toolchain ] || git clone https://github.com/riscv/riscv-gnu-toolchain.git --depth=1
+	cd riscv-gnu-toolchain/; ./configure --prefix $(PWD)/rv32i/ --with-arch=rv32i; make -j4
 
-%.elf: %.s startup.s
-	riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -O0 -nostdlib -Wl,-Tlink.x -g -o $@ startup.s $<
+%.elf: %.c $(CC) startup.s link.x memory.x mriscv.o 
+	$(CC) -march=rv32i -mabi=ilp32 -O0 -nostartfiles -Wl,-Tlink.x -g -o $@ startup.s $< mriscv.o
+
+%.elf: %.s $(CC) startup.s link.x memory.x
+	$(CC) -march=rv32i -mabi=ilp32 -O0 -nostdlib -Wl,-Tlink.x -g -o $@ startup.s $<
 
 %.txt: %.elf
-	riscv64-linux-gnu-objdump -Mno-aliases -Mnumeric -dS $< > $@
+	$(OBJDUMP) -Mno-aliases -Mnumeric -dS $< > $@
 
 %.bin: %.elf
-	riscv64-linux-gnu-objcopy -O binary -j .text $< $@
+	$(OBJCOPY) -O binary -j .text -j .rodata $< $@
 
+mriscv.o: mriscv.c $(CC)
+	$(CC) -march=rv32i -mabi=ilp32 -O0 -nostdlib -g -o $@ -c $<

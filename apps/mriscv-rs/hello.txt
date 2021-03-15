@@ -1,0 +1,265 @@
+
+hello.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00100000 <_start>:
+  100000:	001000b7          	lui	x1,0x100
+  100004:	00808067          	jalr	x0,8(x1) # 100008 <_abs_start>
+
+00100008 <_abs_start>:
+  100008:	30405073          	csrrwi	x0,mie,0
+  10000c:	34405073          	csrrwi	x0,mip,0
+  100010:	00000093          	addi	x1,x0,0
+  100014:	00000113          	addi	x2,x0,0
+  100018:	00000193          	addi	x3,x0,0
+  10001c:	00000213          	addi	x4,x0,0
+  100020:	00000293          	addi	x5,x0,0
+  100024:	00000313          	addi	x6,x0,0
+  100028:	00000393          	addi	x7,x0,0
+  10002c:	00000413          	addi	x8,x0,0
+  100030:	00000493          	addi	x9,x0,0
+  100034:	00000513          	addi	x10,x0,0
+  100038:	00000593          	addi	x11,x0,0
+  10003c:	00000613          	addi	x12,x0,0
+  100040:	00000693          	addi	x13,x0,0
+  100044:	00000713          	addi	x14,x0,0
+  100048:	00000793          	addi	x15,x0,0
+  10004c:	00000813          	addi	x16,x0,0
+  100050:	00000893          	addi	x17,x0,0
+  100054:	00000913          	addi	x18,x0,0
+  100058:	00000993          	addi	x19,x0,0
+  10005c:	00000a13          	addi	x20,x0,0
+  100060:	00000a93          	addi	x21,x0,0
+  100064:	00000b13          	addi	x22,x0,0
+  100068:	00000b93          	addi	x23,x0,0
+  10006c:	00000c13          	addi	x24,x0,0
+  100070:	00000c93          	addi	x25,x0,0
+  100074:	00000d13          	addi	x26,x0,0
+  100078:	00000d93          	addi	x27,x0,0
+  10007c:	00000e13          	addi	x28,x0,0
+  100080:	00000e93          	addi	x29,x0,0
+  100084:	00000f13          	addi	x30,x0,0
+  100088:	00000f93          	addi	x31,x0,0
+  10008c:	00100197          	auipc	x3,0x100
+  100090:	77418193          	addi	x3,x3,1908 # 200800 <__global_pointer$>
+  100094:	f1402673          	csrrs	x12,mhartid,x0
+  100098:	000002b7          	lui	x5,0x0
+  10009c:	00028293          	addi	x5,x5,0 # 0 <_heap_size>
+  1000a0:	00c2f463          	bgeu	x5,x12,1000a8 <_abs_start+0xa0>
+  1000a4:	2c80006f          	jal	x0,10036c <abort>
+  1000a8:	01f00117          	auipc	x2,0x1f00
+  1000ac:	f5810113          	addi	x2,x2,-168 # 2000000 <_sstack>
+  1000b0:	000012b7          	lui	x5,0x1
+  1000b4:	80028293          	addi	x5,x5,-2048 # 800 <_hart_stack_size>
+  1000b8:	00060c63          	beq	x12,x0,1000d0 <.L2^B1>
+  1000bc:	00060313          	addi	x6,x12,0
+  1000c0:	00028393          	addi	x7,x5,0
+
+001000c4 <.L1^B1>:
+  1000c4:	007282b3          	add	x5,x5,x7
+  1000c8:	fff30313          	addi	x6,x6,-1
+  1000cc:	fe031ce3          	bne	x6,x0,1000c4 <.L1^B1>
+
+001000d0 <.L2^B1>:
+  1000d0:	40510133          	sub	x2,x2,x5
+  1000d4:	00010433          	add	x8,x2,x0
+  1000d8:	0040006f          	jal	x0,1000dc <_start_rust>
+
+001000dc <_start_rust>:
+  1000dc:	ff010113          	addi	x2,x2,-16
+  1000e0:	00112623          	sw	x1,12(x2)
+  1000e4:	00000097          	auipc	x1,0x0
+  1000e8:	21c080e7          	jalr	x1,540(x1) # 100300 <default_mp_hook>
+  1000ec:	04050e63          	beq	x10,x0,100148 <_start_rust+0x6c>
+  1000f0:	00000097          	auipc	x1,0x0
+  1000f4:	20c080e7          	jalr	x1,524(x1) # 1002fc <default_pre_init>
+  1000f8:	00200537          	lui	x10,0x200
+  1000fc:	00050513          	addi	x10,x10,0 # 200000 <_ebss>
+  100100:	002005b7          	lui	x11,0x200
+  100104:	00058593          	addi	x11,x11,0 # 200000 <_ebss>
+  100108:	00a5f863          	bgeu	x11,x10,100118 <_start_rust+0x3c>
+  10010c:	0005a023          	sw	x0,0(x11)
+  100110:	00458593          	addi	x11,x11,4
+  100114:	fea5ece3          	bltu	x11,x10,10010c <_start_rust+0x30>
+  100118:	00200537          	lui	x10,0x200
+  10011c:	00050513          	addi	x10,x10,0 # 200000 <_ebss>
+  100120:	002005b7          	lui	x11,0x200
+  100124:	00058593          	addi	x11,x11,0 # 200000 <_ebss>
+  100128:	02a5f063          	bgeu	x11,x10,100148 <_start_rust+0x6c>
+  10012c:	00100637          	lui	x12,0x100
+  100130:	3c460613          	addi	x12,x12,964 # 1003c4 <_sidata>
+  100134:	00062683          	lw	x13,0(x12)
+  100138:	00d5a023          	sw	x13,0(x11)
+  10013c:	00458593          	addi	x11,x11,4
+  100140:	00460613          	addi	x12,x12,4
+  100144:	fea5e8e3          	bltu	x11,x10,100134 <_start_rust+0x58>
+  100148:	00000097          	auipc	x1,0x0
+  10014c:	214080e7          	jalr	x1,532(x1) # 10035c <_setup_interrupts>
+  100150:	00000097          	auipc	x1,0x0
+  100154:	14c080e7          	jalr	x1,332(x1) # 10029c <main>
+  100158:	c0001073          	unimp
+
+0010015c <_start_trap>:
+  10015c:	fc010113          	addi	x2,x2,-64
+  100160:	00112023          	sw	x1,0(x2)
+  100164:	00512223          	sw	x5,4(x2)
+  100168:	00612423          	sw	x6,8(x2)
+  10016c:	00712623          	sw	x7,12(x2)
+  100170:	01c12823          	sw	x28,16(x2)
+  100174:	01d12a23          	sw	x29,20(x2)
+  100178:	01e12c23          	sw	x30,24(x2)
+  10017c:	01f12e23          	sw	x31,28(x2)
+  100180:	02a12023          	sw	x10,32(x2)
+  100184:	02b12223          	sw	x11,36(x2)
+  100188:	02c12423          	sw	x12,40(x2)
+  10018c:	02d12623          	sw	x13,44(x2)
+  100190:	02e12823          	sw	x14,48(x2)
+  100194:	02f12a23          	sw	x15,52(x2)
+  100198:	03012c23          	sw	x16,56(x2)
+  10019c:	03112e23          	sw	x17,60(x2)
+  1001a0:	00010533          	add	x10,x2,x0
+  1001a4:	04c000ef          	jal	x1,1001f0 <_start_trap_rust>
+  1001a8:	00012083          	lw	x1,0(x2)
+  1001ac:	00412283          	lw	x5,4(x2)
+  1001b0:	00812303          	lw	x6,8(x2)
+  1001b4:	00c12383          	lw	x7,12(x2)
+  1001b8:	01012e03          	lw	x28,16(x2)
+  1001bc:	01412e83          	lw	x29,20(x2)
+  1001c0:	01812f03          	lw	x30,24(x2)
+  1001c4:	01c12f83          	lw	x31,28(x2)
+  1001c8:	02012503          	lw	x10,32(x2)
+  1001cc:	02412583          	lw	x11,36(x2)
+  1001d0:	02812603          	lw	x12,40(x2)
+  1001d4:	02c12683          	lw	x13,44(x2)
+  1001d8:	03012703          	lw	x14,48(x2)
+  1001dc:	03412783          	lw	x15,52(x2)
+  1001e0:	03812803          	lw	x16,56(x2)
+  1001e4:	03c12883          	lw	x17,60(x2)
+  1001e8:	04010113          	addi	x2,x2,64
+  1001ec:	30200073          	mret
+
+001001f0 <_start_trap_rust>:
+  1001f0:	ff010113          	addi	x2,x2,-16
+  1001f4:	00112623          	sw	x1,12(x2)
+  1001f8:	00812423          	sw	x8,8(x2)
+  1001fc:	00050413          	addi	x8,x10,0
+  100200:	00000097          	auipc	x1,0x0
+  100204:	154080e7          	jalr	x1,340(x1) # 100354 <__read_mcause>
+  100208:	fff00593          	addi	x11,x0,-1
+  10020c:	00a12223          	sw	x10,4(x2)
+  100210:	02a5d063          	bge	x11,x10,100230 <_start_trap_rust+0x40>
+  100214:	00040513          	addi	x10,x8,0
+  100218:	00000097          	auipc	x1,0x0
+  10021c:	0dc080e7          	jalr	x1,220(x1) # 1002f4 <DefaultExceptionHandler>
+  100220:	00812403          	lw	x8,8(x2)
+  100224:	00c12083          	lw	x1,12(x2)
+  100228:	01010113          	addi	x2,x2,16
+  10022c:	00008067          	jalr	x0,0(x1)
+  100230:	00410513          	addi	x10,x2,4
+  100234:	00000097          	auipc	x1,0x0
+  100238:	0fc080e7          	jalr	x1,252(x1) # 100330 <_ZN5riscv8register6mcause6Mcause4code17he5f1739761dd4736E>
+  10023c:	00c00593          	addi	x11,x0,12
+  100240:	02b57863          	bgeu	x10,x11,100270 <_start_trap_rust+0x80>
+  100244:	001005b7          	lui	x11,0x100
+  100248:	39458593          	addi	x11,x11,916 # 100394 <__INTERRUPTS>
+  10024c:	00251513          	slli	x10,x10,0x2
+  100250:	00b50533          	add	x10,x10,x11
+  100254:	00052503          	lw	x10,0(x10)
+  100258:	00050c63          	beq	x10,x0,100270 <_start_trap_rust+0x80>
+  10025c:	000500e7          	jalr	x1,0(x10)
+  100260:	00812403          	lw	x8,8(x2)
+  100264:	00c12083          	lw	x1,12(x2)
+  100268:	01010113          	addi	x2,x2,16
+  10026c:	00008067          	jalr	x0,0(x1)
+  100270:	00000097          	auipc	x1,0x0
+  100274:	018080e7          	jalr	x1,24(x1) # 100288 <DefaultHandler>
+  100278:	00812403          	lw	x8,8(x2)
+  10027c:	00c12083          	lw	x1,12(x2)
+  100280:	01010113          	addi	x2,x2,16
+  100284:	00008067          	jalr	x0,0(x1)
+
+00100288 <DefaultHandler>:
+  100288:	00100537          	lui	x10,0x100
+  10028c:	37050513          	addi	x10,x10,880 # 100370 <.L__unnamed_1>
+  100290:	01300593          	addi	x11,x0,19
+  100294:	00000317          	auipc	x6,0x0
+  100298:	02830067          	jalr	x0,40(x6) # 1002bc <_ZN6mriscv5print17hfb106271725a4fc4E>
+
+0010029c <main>:
+  10029c:	ff010113          	addi	x2,x2,-16
+  1002a0:	00112623          	sw	x1,12(x2)
+  1002a4:	00100537          	lui	x10,0x100
+  1002a8:	38350513          	addi	x10,x10,899 # 100383 <.L__unnamed_2>
+  1002ac:	00e00593          	addi	x11,x0,14
+  1002b0:	00000097          	auipc	x1,0x0
+  1002b4:	00c080e7          	jalr	x1,12(x1) # 1002bc <_ZN6mriscv5print17hfb106271725a4fc4E>
+  1002b8:	0000006f          	jal	x0,1002b8 <main+0x1c>
+
+001002bc <_ZN6mriscv5print17hfb106271725a4fc4E>:
+  1002bc:	02058863          	beq	x11,x0,1002ec <_ZN6mriscv5print17hfb106271725a4fc4E+0x30>
+  1002c0:	00001637          	lui	x12,0x1
+  1002c4:	00062683          	lw	x13,0(x12) # 1000 <_hart_stack_size+0x800>
+  1002c8:	fff00713          	addi	x14,x0,-1
+  1002cc:	02d75263          	bge	x14,x13,1002f0 <_ZN6mriscv5print17hfb106271725a4fc4E+0x34>
+  1002d0:	00054783          	lbu	x15,0(x10)
+  1002d4:	00150513          	addi	x10,x10,1
+  1002d8:	f006f693          	andi	x13,x13,-256
+  1002dc:	00f6e6b3          	or	x13,x13,x15
+  1002e0:	fff58593          	addi	x11,x11,-1
+  1002e4:	00d62023          	sw	x13,0(x12)
+  1002e8:	fe0592e3          	bne	x11,x0,1002cc <_ZN6mriscv5print17hfb106271725a4fc4E+0x10>
+  1002ec:	00008067          	jalr	x0,0(x1)
+  1002f0:	0000006f          	jal	x0,1002f0 <_ZN6mriscv5print17hfb106271725a4fc4E+0x34>
+
+001002f4 <DefaultExceptionHandler>:
+  1002f4:	0000006f          	jal	x0,1002f4 <DefaultExceptionHandler>
+
+001002f8 <DefaultInterruptHandler>:
+  1002f8:	0000006f          	jal	x0,1002f8 <DefaultInterruptHandler>
+
+001002fc <default_pre_init>:
+  1002fc:	00008067          	jalr	x0,0(x1)
+
+00100300 <default_mp_hook>:
+  100300:	ff010113          	addi	x2,x2,-16
+  100304:	00112623          	sw	x1,12(x2)
+  100308:	00000097          	auipc	x1,0x0
+  10030c:	044080e7          	jalr	x1,68(x1) # 10034c <__read_mhartid>
+  100310:	00050863          	beq	x10,x0,100320 <default_mp_hook+0x20>
+  100314:	00000097          	auipc	x1,0x0
+  100318:	030080e7          	jalr	x1,48(x1) # 100344 <__wfi>
+  10031c:	ff9ff06f          	jal	x0,100314 <default_mp_hook+0x14>
+  100320:	00100513          	addi	x10,x0,1
+  100324:	00c12083          	lw	x1,12(x2)
+  100328:	01010113          	addi	x2,x2,16
+  10032c:	00008067          	jalr	x0,0(x1)
+
+00100330 <_ZN5riscv8register6mcause6Mcause4code17he5f1739761dd4736E>:
+  100330:	00052503          	lw	x10,0(x10)
+  100334:	800005b7          	lui	x11,0x80000
+  100338:	fff58593          	addi	x11,x11,-1 # 7fffffff <_sstack+0x7dffffff>
+  10033c:	00b57533          	and	x10,x10,x11
+  100340:	00008067          	jalr	x0,0(x1)
+
+00100344 <__wfi>:
+  100344:	10500073          	wfi
+  100348:	00008067          	jalr	x0,0(x1)
+
+0010034c <__read_mhartid>:
+  10034c:	f1402573          	csrrs	x10,mhartid,x0
+  100350:	00008067          	jalr	x0,0(x1)
+
+00100354 <__read_mcause>:
+  100354:	34202573          	csrrs	x10,mcause,x0
+  100358:	00008067          	jalr	x0,0(x1)
+
+0010035c <_setup_interrupts>:
+  10035c:	00000297          	auipc	x5,0x0
+  100360:	e0028293          	addi	x5,x5,-512 # 10015c <_start_trap>
+  100364:	30529073          	csrrw	x0,mtvec,x5
+  100368:	00008067          	jalr	x0,0(x1)
+
+0010036c <abort>:
+  10036c:	0000006f          	jal	x0,10036c <abort>

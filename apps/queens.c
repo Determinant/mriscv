@@ -1,3 +1,5 @@
+#include "mriscv.h"
+
 int queen(int i,
           unsigned atk_l,
           unsigned atk_r,
@@ -22,7 +24,11 @@ int nqueen(int n) {
 }
 
 int main() {
+    char buff[10];
     int res = nqueen(8);
-    //printf("%d\n", res);
+    print("nqueen = ");
+    itoa(res, buff);
+    print(buff);
+    print("\n");
     return 0;
 }

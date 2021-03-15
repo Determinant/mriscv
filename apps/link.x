@@ -5,6 +5,9 @@ SECTIONS
     .text : {
         KEEP(*(.text))
     } > FLASH
+    .rodata : {
+        *(.rodata)
+    } > FLASH
     .data : {
         *(.data)
     } > RAM

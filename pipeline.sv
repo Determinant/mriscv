@@ -6,6 +6,8 @@
     `endif
 `endif
 
+`define PC_RESET 32'h00100000
+
 // opcode
 `define LUI     7'b0110111
 `define AUIPC   7'b0010111
@@ -149,7 +151,7 @@ module fetcher(
             `ifdef PIPELINE_DEBUG
                 $display("[%0t] reset pc", $time);
             `endif
-            pc <= 32'h00000000; // initialize PC to 0x00000000
+            pc <= `PC_RESET; // initialize PC
             ctrl_nop_reg <= 1;
         end else if (!ctrl_stall) begin
             `ifdef PIPELINE_DEBUG
