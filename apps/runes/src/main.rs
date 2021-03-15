@@ -14,11 +14,8 @@ fn main() -> ! {
     //let cpu_mem = CPUMemory::new();
     //let cpu = mos6502::CPU::new();
 
-    let mut a = 1;
-    for _ in 0..4 {
-        let _c = a * 3;
-        a += 1;
+    let mut _a = 1;
+    loop {
+        _a += 3;
     }
-
-    loop {}
 }

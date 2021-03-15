@@ -23,9 +23,9 @@ Disassembly of section .text:
 
 0000002c <main>:
   2c:	00000193          	addi	x3,x0,0
-  30:	00000117          	auipc	x2,0x0
-  34:	ff010113          	addi	x2,x2,-16 # 20 <handler>
-  38:	30511073          	csrrw	x0,mtvec,x2
+  30:	00000217          	auipc	x4,0x0
+  34:	ff020213          	addi	x4,x4,-16 # 20 <handler>
+  38:	30521073          	csrrw	x0,mtvec,x4
   3c:	00000073          	ecall
   40:	00218193          	addi	x3,x3,2
   44:	00008067          	jalr	x0,0(x1)

@@ -1,3 +1,9 @@
+`ifndef SYNTHESIS
+    `ifdef DEBUG
+        `define CSR_DEBUG
+    `endif
+`endif
+
 // Definitions copied from Linux kernel:
 // https://github.com/torvalds/linux/blob/master/arch/riscv/include/asm/csr.h
 // Comments copied from RISC-V Volume II
@@ -26,13 +32,7 @@
 // WLRL: Write/Read Only Legal Values
 // WARL: Write Any Values, Reads Legal Values
 
-`ifndef SYNTHESIS
-    `ifdef DEBUG
-        `define PIPELINE_DEBUG
-    `endif
-`endif
-
-module csr_file(
+module csr(
     input [11:0] raddr1,
     input [11:0] raddr2,
     output [31:0] rdata1,
@@ -104,6 +104,11 @@ module csr_file(
     wire [31:0] _mtval = wdata;
     wire [31:0] _mip = (mip & (~mi_mask)) | (wdata & mi_mask);
 
+    // used by trap handling logic
+    wire [31:0] trap_mstatus = {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]};
+    wire [31:0] trap_mcause = {trap_info[4], 27'b0, trap_info[3:0]};
+    wire [31:0] mret_mstatus = {mstatus[31:8], 1'b0, mstatus[6:4], mstatus[7], mstatus[2:0]};
+
     `define read_csr(raddr, reg_addr, reg) \
         (raddr == reg_addr) ? (raddr == waddr ? _``reg : reg)
 
@@ -136,22 +141,31 @@ module csr_file(
             mtval <= 'h00000000;
         end
         if (ctrl_trap) begin
-            // On trap signal:
+            // On trap:
             // 0. it is guaranteed that no read/write is on-going and all previous writes are visible
             // 1. the value of mstatus.MIE is copied into mcause.MPIE, and then
             // mstatus.MIE is cleared, effectively disabling interrupts.
             // 2. the current pc is copied into the mepc register
-            mstatus <= {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]};
-            mepc <= trap_pc;
-            mcause <= {trap_info[4], 27'b0, trap_info[3:0]};
-        end else if (ctrl_mret) begin
-            mstatus <= {mstatus[31:8], 1'b0, mstatus[6:4], mstatus[7], mstatus[2:0]};
+            // Exit trap:
+            // 1. mstatus.mie = mstatus.mpie, restore interrupt enable
+            // 2. mstatus.mpie = 0
+            if (ctrl_mret) begin
+                `ifdef CSR_DEBUG
+                    $display("[%0t] ! CSR  mret: mstatus=0x%h to CSR", $time, mret_mstatus);
+                `endif
+                mstatus <= mret_mstatus;
+            end else begin
+                `ifdef CSR_DEBUG
+                    $display("[%0t] ! CSR  trap: mstatus=0x%h mepc=0x%h mcause=0x%h to CSR",
+                        $time, trap_mstatus, trap_pc, trap_mcause);
+                `endif
+                mstatus <= trap_mstatus;
+                mepc <= trap_pc;
+                mcause <= trap_mcause;
+            end
         end else if (wen) begin
-            `ifdef PIPELINE_DEBUG
-                $display(
-                    "[%0t] *[wb-csr] write 0x%h to CSR 0x%h",
-                    $time, wdata, waddr
-                );
+            `ifdef CSR_DEBUG
+                $display("[%0t] ! CSR  writes 0x%h to csr[0x%h]", $time, wdata, waddr);
             `endif
             case (waddr)
                 `CSR_MSTATUS: mstatus <= _mstatus;

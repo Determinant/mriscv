@@ -8,8 +8,8 @@ handler:
 
 main:
 	addi x3, x0, 0
-	la x2, handler
-	csrrw x0, mtvec, x2
+	la x4, handler
+	csrrw x0, mtvec, x4
 	ecall
 	addi x3, x3, 2
 	jalr x0, 0(x1)

@@ -9,7 +9,7 @@
 #include "Vcpu.h"
 
 uint64_t main_time = 0;
-const uint32_t halt_addr = 0x0000001c;
+uint32_t halt_addr = 0x0000001c;
 
 double sc_time_stamp() {
     return main_time;
@@ -176,6 +176,7 @@ struct SoC {
 
 static struct option long_options[] = {
     {"load-image", required_argument, 0, 'l'},
+    {"halt-addr", required_argument, 0, 'e'},
 };
 
 void die(const char *s) {
@@ -188,7 +189,7 @@ int main(int argc, char** argv) {
     auto soc = SoC(std::make_shared<Vcpu>(), 32 << 20);
     for (;;)
     {
-        int c = getopt_long(argc, argv, "l:", long_options, &optidx);
+        int c = getopt_long(argc, argv, "l:e:", long_options, &optidx);
         if (c == -1) break;
         switch (c)
         {
@@ -203,7 +204,7 @@ int main(int argc, char** argv) {
                     {
                         size_t t;
                         try {
-                            auto loc = std::stoul(arg.substr(pos + 1).c_str(), &t, 16);
+                            auto loc = std::stoul(arg.substr(pos + 1), &t, 16);
                             soc.ram.load_image_from_file(img, loc);
                         } catch (...) {
                             die("invalid image location");
@@ -211,6 +212,15 @@ int main(int argc, char** argv) {
                         fclose(img);
                     }
                     break;
+                }
+            case 'e':
+                {
+                    size_t t;
+                    try {
+                        halt_addr = std::stoul(optarg, &t, 16);
+                    } catch (...) {
+                        die("invalid addr");
+                    }
                 }
         }
     }

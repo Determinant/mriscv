@@ -1,6 +1,12 @@
-`include "csr_file.sv"
-// opcode
+`include "csr.sv"
 
+`ifndef SYNTHESIS
+    `ifdef DEBUG
+        `define PIPELINE_DEBUG
+    `endif
+`endif
+
+// opcode
 `define LUI     7'b0110111
 `define AUIPC   7'b0010111
 `define JAL     7'b1101111
@@ -11,12 +17,10 @@
 `define XXXI    7'b0010011 // ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI
 `define XXX     7'b0110011 // ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND
 `define SYS     7'b1110011 // ECALL, EBREAK, CSRx
-
-// the following is not supported yet
+// NOTE: fence will be interpreted as a nop
 `define FEN     7'b0001111 // FENCE
 
 // funct3 code
-
 `define FADD   3'b000
 `define FSLT   3'b010
 `define FSLTU  3'b011
@@ -63,12 +67,6 @@
 `define EXC_ST_ALIGN   6
 `define EXC_LD_ALIGN   4
 
-`ifndef SYNTHESIS
-    `ifdef DEBUG
-        `define PIPELINE_DEBUG
-    `endif
-`endif
-
 module register_file(
     input [4:0] raddr1,
     input [4:0] raddr2,
@@ -91,20 +89,16 @@ module register_file(
         if (writing) begin
             `ifdef PIPELINE_DEBUG
                 $display(
-                    "[%0t] *[wb] write 0x%h to register %d",
+                    "[%0t] ! REG  writes 0x%h to register %d",
                     $time, wdata, waddr
                 );
             `endif
             regs[waddr] <= wdata;
-        end else begin
-            `ifdef PIPELINE_DEBUG
-                $display("[%0t]  [wb] idle", $time);
-            `endif
         end
     end
 endmodule
 
-module exception_code(
+module exception_decode(
     input [5:0] eid,
     output [3:0] code
 );
@@ -145,6 +139,11 @@ module fetcher(
     assign icache_addr = pc;
     assign icache_req = ins_aligned;
     assign ctrl_fetcher_stall = ins_aligned && !icache_rdy;
+    `ifdef PIPELINE_DEBUG
+        `define if_print_stat(m, prefix) \
+            $display("[%0t] %s[IF ] %s on pc=0x%h (j=0x%h,%b;e=0x%h,%b)", \
+                $time, m, prefix, pc, pc_jump_target, ctrl_jump, pc_exc_target, ctrl_exc)
+    `endif
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
             `ifdef PIPELINE_DEBUG
@@ -154,9 +153,7 @@ module fetcher(
             ctrl_nop_reg <= 1;
         end else if (!ctrl_stall) begin
             `ifdef PIPELINE_DEBUG
-                $display(
-                    "[%0t] *[fetch] stage works on pc=0x%h jump=(0x%h,%b)",
-                    $time, pc, pc_jump_target, ctrl_jump);
+                `if_print_stat("*", "works");
             `endif
             pc <= ctrl_exc ? pc_exc_target :
                   ctrl_jump ? pc_jump_target : (pc + 4);
@@ -166,8 +163,7 @@ module fetcher(
             ctrl_nop_reg <= 0;
         end else begin
             `ifdef PIPELINE_DEBUG
-                $display("[%0t] =[fetch] stage stalls on pc=0x%h jump=(0x%h,%b)",
-                    $time, pc, pc_jump_target, ctrl_jump);
+                `if_print_stat("=", "stalls");
             `endif
             if (!ctrl_next_stage_stall) // insert a bubble
                 ctrl_nop_reg <= 1;
@@ -267,6 +263,7 @@ module decoder(
                   ctrl_skip_next_reg ||
                   ctrl_exc ||
                   (opcode == `XXXI && inst[31:7] == 0) ||
+                  (opcode == `SYS && funct3 == 0 && funct12 == `WFI) ||
                   opcode == `FEN;
 
     assign ctrl_decoder_stall = ctrl_forward_mload_stall &&
@@ -329,14 +326,20 @@ module decoder(
             ctrl_skip_next_reg <= 0;
             ctrl_nop_reg <= 1;
         end else if (!ctrl_stall) begin
+            `ifdef PIPELINE_DEBUG
+                `define id_print_stat(m, prefix) \
+                    $display(\
+                        "[%0t] %s[ID ] %s on ",  $time, m, prefix, \
+                        "pc=0x%h exc=%b op1=0x%h op2=0x%h rs1=%0d rs2=%0d fwd=(0x%h,%0d,%b;0x%h,%0d,%b) rd=%0d skip=%b", \
+                        pc, exc, op1, op2, rs1, rs2, \
+                        forward_data_exec, ctrl_forward_rd_exec, ctrl_forward_valid_exec, \
+                        forward_data_mem, ctrl_forward_rd_mem, ctrl_forward_valid_mem,\
+                        inst, rd, ctrl_skip_next_reg)
+            `endif
+
             if (!is_nop) begin
                 `ifdef PIPELINE_DEBUG
-                    if (opcode == `SYS && mret) begin
-                        $display("epc 0x%h", csr_rdata);
-                    end
-                    $display(
-                        "[%0t] *[decode] stage works on inst=0x%h pc=0x%h rs1=0x%h rs2=0x%h rd=0x%h exc=%b skip=%b",
-                        $time, inst, pc, op1, op2, rd, exc, ctrl_skip_next_reg);
+                    `id_print_stat("*", "works");
                 `endif
                 case (opcode)
                     `XXXI: begin
@@ -445,16 +448,14 @@ module decoder(
                 ctrl_skip_next_reg <= ctrl_jump;
             end else begin // NOP or a bubble
                 `ifdef PIPELINE_DEBUG
-                    $display("[%0t]  [decode] stage idle", $time);
+                    $display("[%0t]  [ID ] idle", $time);
                 `endif
-                ctrl_skip_next_reg <= 0;
+                ctrl_skip_next_reg <= ctrl_exc;
             end
             ctrl_nop_reg <= is_nop;
         end else begin // stalled
             `ifdef PIPELINE_DEBUG
-                $display(
-                    "[%0t] =[decode] stage stalls on inst=0x%h pc=0x%h rs1=0x%h rs2=0x%h rd=0x%h skip=%b",
-                    $time, inst, pc, op1, op2, rd, ctrl_skip_next_reg);
+                `id_print_stat("=", "stalls");
             `endif
             if (!ctrl_next_stage_stall) // insert a bubble
                 ctrl_nop_reg <= 1;
@@ -512,7 +513,7 @@ module executor(
     wire is_nop = ctrl_nop || ctrl_exc;
     assign ctrl_executor_stall = 0;
     // the second clause is for LX (has to wait after memory load, and ALU's result should be ignored)
-    assign ctrl_forward_valid = (!is_nop) && ctrl_wb && (!ctrl_mem[1]);
+    assign ctrl_forward_valid = (!is_nop) && ctrl_wb && (!ctrl_mem[1]) && rd != 0;
     assign ctrl_forward_mload_stall = (!is_nop) && ctrl_mem[1:0] == 2'b10;
     assign ctrl_forward_rd = rd;
     assign forward_data = res;
@@ -535,12 +536,17 @@ module executor(
         if (ctrl_reset)
             ctrl_nop_reg <= 1;
         else if (!ctrl_stall) begin
+            `ifdef PIPELINE_DEBUG
+                `define ex_print_stat(m, prefix) \
+                    $display( \
+                        "[%0t] %s[EX ] %s on ", $time, m, prefix, \
+                        "pc=0x%h exc=%b op1=0x%h op2=0x%h res=0x%h tmp=0x%h rd=%0d sign=%b", \
+                        pc, exc, op1, op2, res, tmp, rd, ctrl_alu_sign_ext)
+
+            `endif
             if (!is_nop) begin
                 `ifdef PIPELINE_DEBUG
-                    $display(
-                        "[%0t] *[execution] stage works on op1=0x%h op2=0x%h tmp=0x%h rd=%d sign=%b",
-                        $time, op1, op2, tmp, rd, ctrl_alu_sign_ext
-                    );
+                    `ex_print_stat("*", "works");
                 `endif
                 res_reg <= res;
                 rd_reg <= rd;
@@ -554,16 +560,13 @@ module executor(
                 ctrl_mem_reg <= ctrl_mem;
             end else begin
                 `ifdef PIPELINE_DEBUG
-                    $display("[%0t]  [execution] stage idle", $time);
+                    $display("[%0t]  [EX ] idle", $time);
                 `endif
             end
             ctrl_nop_reg <= is_nop;
         end else begin
             `ifdef PIPELINE_DEBUG
-                $display(
-                    "[%0t] =[execution] stage stalls on op1=0x%h op2=0x%h tmp=0x%h rd=%d sign=%b",
-                    $time, op1, op2, tmp, rd, ctrl_alu_sign_ext
-                );
+                `ex_print_stat("=", "stalls");
             `endif
             if (!ctrl_next_stage_stall)
                 ctrl_nop_reg <= 1;
@@ -631,7 +634,7 @@ module memory(
 
     assign ctrl_mem_stall = dcache_req && (!dcache_rdy);
 
-    assign ctrl_forward_valid = (!is_nop) && ctrl_wb;
+    assign ctrl_forward_valid = (!is_nop) && ctrl_wb && rd != 0;
     assign ctrl_forward_rd = rd;
     assign forward_data = res;
 
@@ -652,12 +655,15 @@ module memory(
         if (ctrl_reset)
             ctrl_nop_reg <= 1;
         else if (!ctrl_stall) begin
+            `ifdef PIPELINE_DEBUG
+                `define mem_print_stat(m, prefix) \
+                    $display("[%0t] %s[MEM] %s on ", $time, m, prefix, \
+                            "pc=0x%h, res_alu=0x%h tmp=0x%h rd=%0d ctrl_wb=(%b,%b) ctrl_mem=%5b", \
+                            pc, res_alu, tmp, rd, ctrl_wb, ctrl_wb_csr, ctrl_mem)
+            `endif
             if (!is_nop) begin
                 `ifdef PIPELINE_DEBUG
-                    $display(
-                        "[%0t] *[memory] stage works on res_alu=0x%h tmp=0x%h rd=%d ctrl_wb=(%b,%b) ctrl_mem=%5b",
-                        $time, res_alu, tmp, rd, ctrl_wb, ctrl_wb_csr, ctrl_mem
-                    );
+                    `mem_print_stat("*", "works");
                 `endif
                 res_reg <= res;
                 rd_reg <= rd;
@@ -670,15 +676,13 @@ module memory(
                 ctrl_mret_reg <= ctrl_mret;
             end else begin
                 `ifdef PIPELINE_DEBUG
-                    $display("[%0t]  [memory] stage idle", $time);
+                    $display("[%0t]  [MEM] idle", $time);
                 `endif
             end
             ctrl_nop_reg <= is_nop;
         end else begin
             `ifdef PIPELINE_DEBUG
-                $display(
-                    "[%0t] =[memory] stage stalls on res_alu=0x%h tmp=0x%h rd=%d ctrl_wb=(%b,%b) ctrl_mem=%5b",
-                    $time, res_alu, tmp, rd, ctrl_wb, ctrl_wb_csr, ctrl_mem);
+                `mem_print_stat("=", "stalls");
             `endif
             if (!ctrl_next_stage_stall)
                 ctrl_nop_reg <= 1;
@@ -734,7 +738,7 @@ module writeback(
     // 1. change PC of fetcher for the next cycle according to mtvec.
     // 2. mark all instructions in previous stages as NOP.
     // 3. push a special flag to writeback stage (so it writes back all CSR changes in the next cycle).
-    exception_code _code(exc, cause);
+    exception_decode _exc_decode(exc, cause);
     wire [31:0] mtvec_base = {csr_rdata[31:2], 2'b00};
     wire [3:0] cause;
     wire is_exc = exc != 0;
@@ -745,13 +749,16 @@ module writeback(
                                          (csr_rdata + 4);
     assign ctrl_exc = (!ctrl_nop) && (is_exc || ctrl_mret);
     `ifdef PIPELINE_DEBUG
+        `define wb_print_stat(m, prefix) \
+            $display("[%0t] %s[WB ] %s on ", $time, m, prefix, \
+                    "pc=0x%h res=0x%h tmp=0x%h e=0x%h exc=%b rd=%0d rd_csr=0x%h mret=%b", \
+                    pc, res, tmp, ctrl_pc_exc_target, exc, rd, rd_csr, ctrl_mret \
+            )
         always_ff @ (posedge ctrl_clk) begin
-            if (!ctrl_nop) begin
-                    $display(
-                        "[%0t] [WB] stage works on pc=0x%h exc=%b",
-                        $time, pc, exc
-                    );
-            end
+            if (!ctrl_nop)
+                `wb_print_stat("*", "works");
+            else
+                $display("[%0t]  [WB ] idle", $time);
         end
     `endif
 endmodule
@@ -806,7 +813,7 @@ module pipeline (
     wire [4:0] csr_trap_info;
 
 
-    csr_file csr_reg(
+    csr csr_reg(
         .raddr1(csr_raddr1),
         .raddr2(csr_raddr2),
         .rdata1(csr_rdata1),
