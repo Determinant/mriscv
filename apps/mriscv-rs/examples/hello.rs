@@ -13,6 +13,12 @@ fn my_interrupt_handler() {
 
 #[entry]
 fn main() -> ! {
-    print("hello, world!\n");
+    print("hello, world! Count from 10:\n");
+    let mut buff = [0u8; 10];
+    for i in {0..10}.rev() {
+        let n = mriscv::itoa(i, &mut buff);
+        print(core::str::from_utf8(&buff[..n]).unwrap());
+        print("\n");
+    }
     loop {}
 }
