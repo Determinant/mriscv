@@ -14,8 +14,12 @@ fn main() -> ! {
     //let cpu_mem = CPUMemory::new();
     //let cpu = mos6502::CPU::new();
 
-    let mut _a = 1;
+    let mut a = 1;
+    let ptr = 0x400000 as *mut u32;
     loop {
-        _a += 3;
+        a += 3;
+        unsafe {
+            ptr.write_volatile(a);
+        }
     }
 }
