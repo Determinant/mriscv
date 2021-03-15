@@ -8,6 +8,12 @@
 #include "verilated.h"
 #include "Vcpu.h"
 
+#ifdef DEBUG
+#define debug(f_, ...) printf((f_), ##__VA_ARGS__)
+#else
+#define debug(...) do {} while(0)
+#endif
+
 uint64_t main_time = 0;
 uint32_t halt_addr = 0x0000001c;
 
@@ -48,7 +54,7 @@ class SimulatedRAM {
     void eval_posedge() {
         if (cpu->reset == 1)
         {
-            printf("reset ram\n");
+            debug("reset ram\n");
             icache_state = 0;
             dcache_state = 0;
             cpu->icache_rdy = 0;
@@ -73,7 +79,7 @@ class SimulatedRAM {
                     (memory[cpu->icache_addr + 3] << 24);
                 cpu->icache_rdy = 1;
                 icache_state = 0;
-                printf("icache: read byte @ %08x = %08x\n", cpu->icache_addr, cpu->icache_data);
+                debug("icache: read byte @ %08x = %08x\n", cpu->icache_addr, cpu->icache_data);
                 //schedule_next_icache_rdy(4);
             } else icache_next_rdy--;
         }
@@ -95,18 +101,18 @@ class SimulatedRAM {
                     auto data = cpu->dcache_wdata;
                     if (cpu->dcache_ws == 0)
                     {
-                        printf("dcache: write byte @ %08x = %02x\n", addr, data);
+                        debug("dcache: write byte @ %08x = %02x\n", addr, data);
                         memory[addr] = data & 0xff;
                     }
                     else if (cpu->dcache_ws == 1)
                     {
-                        printf("dcache: write halfword @ %08x = %04x\n", addr, data);
+                        debug("dcache: write halfword @ %08x = %04x\n", addr, data);
                         memory[addr] = data & 0xff;
                         memory[addr + 1] = (data >> 8) & 0xff;
                     }
                     else if (cpu->dcache_ws == 2)
                     {
-                        printf("dcache: write word @ %08x = %08x\n", addr, data);
+                        debug("dcache: write word @ %08x = %08x\n", addr, data);
                         memory[addr] = data & 0xff;
                         memory[addr + 1] = (data >> 8) & 0xff;
                         memory[addr + 2] = (data >> 16) & 0xff;
@@ -117,13 +123,13 @@ class SimulatedRAM {
                 else
                 {
                     cpu->dcache_rdata = *(uint32_t *)(&memory[0] + cpu->dcache_addr);
-                    printf("dcache: read word @ %08x = %08x\n", cpu->dcache_addr, cpu->dcache_rdata);
+                    debug("dcache: read word @ %08x = %08x\n", cpu->dcache_addr, cpu->dcache_rdata);
                 }
                 cpu->dcache_rdy = 1;
                 dcache_state = 0;
                 //schedule_next_dcache_rdy(1);
             } else {
-                printf("delayed dcache response: %lu\n", dcache_next_rdy);
+                debug("delayed dcache response: %lu\n", dcache_next_rdy);
                 dcache_next_rdy--;
             }
         }
@@ -226,10 +232,10 @@ int main(int argc, char** argv) {
     }
     Verilated::commandArgs(argc, argv);
     soc.reset();
-    printf("reset\n");
+    debug("reset\n");
     while (!Verilated::gotFinish()) {
         soc.next_tick();
-        puts("===");
+        debug("===\n");
         if (soc.cpu->_debug_pc == halt_addr)
         {
             soc.halt();
