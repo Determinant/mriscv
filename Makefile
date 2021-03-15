@@ -5,8 +5,8 @@ verilator_base=/usr/share/verilator
 all: sim sim_debug apps
 
 clean:
-	rm -r cpu_cc
-	rm sim
+	rm -r cpu_cc cpu_cc_debug
+	rm sim sim_debug
 
 cpu_cc: cpu.sv pipeline.sv csr.sv
 	verilator cpu.sv --Mdir $@ --cc -Wall -Wno-style
