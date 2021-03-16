@@ -18,7 +18,7 @@ clean:
 
 $(CC):
 	[ -d riscv-gnu-toolchain ] || git clone https://github.com/riscv/riscv-gnu-toolchain.git --depth=1
-	cd riscv-gnu-toolchain/; ./configure --prefix $(PWD)/rv32i/ --with-arch=rv32i; make -j4; cd -; rm -rf riscv-gnu-toolchain/
+	cd riscv-gnu-toolchain/; ./configure --prefix "$$(pwd)/../rv32i/" --with-arch=rv32i; make -j4; cd -; rm -rf riscv-gnu-toolchain/
 
 %.elf: %.c $(CC) startup.s link.x memory.x mriscv.o
 	$(CC) -march=rv32i -mabi=ilp32 -O2 -nostartfiles -Wl,-Tlink.x -g -o $@ startup.s $< mriscv.o
