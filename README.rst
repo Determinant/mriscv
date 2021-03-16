@@ -3,12 +3,20 @@ Requirements
 
 - Verilator
 
+Build
+-----
+
+- ``cd`` to repo root.
+- Build RTL simulator: ``make``
+- Build C apps: ``make -C ./apps``
+- Build Rust apps: ``make -C ./apps/mriscv-rs``
+
 Example
 -------
 
-- C Hello World: ``make && ./sim -l apps/hello.bin=0x100000``
-- C 8 Queens: ``make && ./sim -l apps/queens.bin=0x100000``
-- Rust Hello World: ``make && make -C ./apps/mriscv-rs && ./sim -l apps/mriscv-rs/hello.bin=0x100000``
+- C Hello World: ``./sim -l apps/hello.bin=0x100000``
+- C 8 Queens: ``./sim -l apps/queens.bin=0x100000``
+- Rust Hello World: ``./sim -l apps/mriscv-rs/hello.bin=0x100000``
 
 Memory Map
 ----------
