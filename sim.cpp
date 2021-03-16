@@ -208,7 +208,7 @@ void die(const char *s) {
 
 int main(int argc, char** argv) {
     int optidx = 0;
-    auto soc = SoC(std::make_shared<Vcpu>(), 32 << 20);
+    auto soc = SoC(std::make_shared<Vcpu>(), 40 << 20);
     for (;;)
     {
         int c = getopt_long(argc, argv, "l:e:", long_options, &optidx);

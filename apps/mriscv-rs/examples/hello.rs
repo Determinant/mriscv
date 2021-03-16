@@ -19,5 +19,9 @@ fn main() -> ! {
     for i in {0..10}.rev() {
         uprintln!(s, "now it is {}...", i);
     }
-    loop {}
+    loop {
+        unsafe {
+            riscv::asm::wfi();
+        }
+    }
 }
