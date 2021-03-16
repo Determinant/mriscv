@@ -26,9 +26,6 @@ int nqueen(int n) {
 int main() {
     char buff[10];
     int res = nqueen(8);
-    print("nqueen = ");
-    itoa(res, buff);
-    print(buff);
-    print("\n");
+    bprintf(buff, "nqueen = %d\n", res);
     return 0;
 }

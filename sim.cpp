@@ -255,7 +255,7 @@ int main(int argc, char** argv) {
         if (soc.cpu->_debug_pc == halt_addr)
         {
             soc.halt();
-            printf("halt the processor at 0x%x\n", halt_addr);
+            printf("halted the processor at 0x%x\n", halt_addr);
             break;
         }
     }
