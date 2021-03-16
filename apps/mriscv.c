@@ -10,7 +10,7 @@ uint32_t strlen(const char *s) {
 }
 
 void int_to_string(int _n, char *s, bool sign, bool uppercase, int base) {
-    bool neg = 0;
+    bool neg;
     uint8_t i = 0;
     uint32_t n;
     char c;
@@ -52,7 +52,7 @@ size_t print(const char *s) {
     return n;
 }
 
-int bprintf(char *buff, const char *fmt, ...) {
+int uprintf(char *buff, const char *fmt, ...) {
     size_t nwrote = 0;
     va_list ap;
     va_start(ap, fmt);

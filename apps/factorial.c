@@ -7,6 +7,6 @@ int fac(int n) {
 int main() {
     char buff[10];
     for (unsigned i = 0; i < 10; i++)
-        bprintf(buff, "factorial(%u) = %u\n", i, fac(i));
+        uprintf(buff, "factorial(%u) = %u\n", i, fac(i));
     return 0;
 }

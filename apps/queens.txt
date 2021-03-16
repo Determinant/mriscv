@@ -222,7 +222,7 @@ Disassembly of section .text:
   100310:	fd1ff06f          	jal	x0,1002e0 <print+0x28>
   100314:	00008067          	jalr	x0,0(x1)
 
-00100318 <bprintf>:
+00100318 <uprintf>:
   100318:	fa010113          	addi	x2,x2,-96
   10031c:	04f12a23          	sw	x15,84(x2)
   100320:	02112e23          	sw	x1,60(x2)
@@ -242,7 +242,7 @@ Disassembly of section .text:
   100358:	0005c703          	lbu	x14,0(x11)
   10035c:	04810793          	addi	x15,x2,72
   100360:	00f12623          	sw	x15,12(x2)
-  100364:	18070463          	beq	x14,x0,1004ec <bprintf+0x1d4>
+  100364:	18070463          	beq	x14,x0,1004ec <uprintf+0x1d4>
   100368:	001009b7          	lui	x19,0x100
   10036c:	00058493          	addi	x9,x11,0
   100370:	00050913          	addi	x18,x10,0
@@ -252,19 +252,19 @@ Disassembly of section .text:
   100380:	5ec98993          	addi	x19,x19,1516 # 1005ec <main+0x44>
   100384:	00200437          	lui	x8,0x200
   100388:	00148a93          	addi	x21,x9,1
-  10038c:	03771463          	bne	x14,x23,1003b4 <bprintf+0x9c>
+  10038c:	03771463          	bne	x14,x23,1003b4 <uprintf+0x9c>
   100390:	0014c783          	lbu	x15,1(x9)
-  100394:	07778263          	beq	x15,x23,1003f8 <bprintf+0xe0>
+  100394:	07778263          	beq	x15,x23,1003f8 <uprintf+0xe0>
   100398:	fa878793          	addi	x15,x15,-88
   10039c:	0ff7f793          	andi	x15,x15,255
-  1003a0:	08fa6463          	bltu	x20,x15,100428 <bprintf+0x110>
+  1003a0:	08fa6463          	bltu	x20,x15,100428 <uprintf+0x110>
   1003a4:	00279793          	slli	x15,x15,0x2
   1003a8:	013787b3          	add	x15,x15,x19
   1003ac:	0007a783          	lw	x15,0(x15)
   1003b0:	00078067          	jalr	x0,0(x15)
   1003b4:	00042783          	lw	x15,0(x8) # 200000 <UART_TXDATA>
   1003b8:	0007a783          	lw	x15,0(x15)
-  1003bc:	fe07cce3          	blt	x15,x0,1003b4 <bprintf+0x9c>
+  1003bc:	fe07cce3          	blt	x15,x0,1003b4 <uprintf+0x9c>
   1003c0:	00042783          	lw	x15,0(x8)
   1003c4:	00042603          	lw	x12,0(x8)
   1003c8:	000a8693          	addi	x13,x21,0
@@ -276,12 +276,12 @@ Disassembly of section .text:
   1003e0:	00e62023          	sw	x14,0(x12)
   1003e4:	00068493          	addi	x9,x13,0
   1003e8:	001ac703          	lbu	x14,1(x21)
-  1003ec:	f8071ee3          	bne	x14,x0,100388 <bprintf+0x70>
+  1003ec:	f8071ee3          	bne	x14,x0,100388 <uprintf+0x70>
   1003f0:	000b0513          	addi	x10,x22,0
-  1003f4:	0380006f          	jal	x0,10042c <bprintf+0x114>
+  1003f4:	0380006f          	jal	x0,10042c <uprintf+0x114>
   1003f8:	00042783          	lw	x15,0(x8)
   1003fc:	0007a783          	lw	x15,0(x15)
-  100400:	fe07cce3          	blt	x15,x0,1003f8 <bprintf+0xe0>
+  100400:	fe07cce3          	blt	x15,x0,1003f8 <uprintf+0xe0>
   100404:	00042783          	lw	x15,0(x8)
   100408:	00042703          	lw	x14,0(x8)
   10040c:	001b0b13          	addi	x22,x22,1
@@ -290,7 +290,7 @@ Disassembly of section .text:
   100418:	f007f793          	andi	x15,x15,-256
   10041c:	0257e793          	ori	x15,x15,37
   100420:	00f72023          	sw	x15,0(x14)
-  100424:	fc5ff06f          	jal	x0,1003e8 <bprintf+0xd0>
+  100424:	fc5ff06f          	jal	x0,1003e8 <uprintf+0xd0>
   100428:	fff00513          	addi	x10,x0,-1
   10042c:	03c12083          	lw	x1,60(x2)
   100430:	03812403          	lw	x8,56(x2)
@@ -316,11 +316,11 @@ Disassembly of section .text:
   100480:	e39ff0ef          	jal	x1,1002b8 <print>
   100484:	00ab0b33          	add	x22,x22,x10
   100488:	00248493          	addi	x9,x9,2
-  10048c:	f5dff06f          	jal	x0,1003e8 <bprintf+0xd0>
+  10048c:	f5dff06f          	jal	x0,1003e8 <uprintf+0xd0>
   100490:	00c12783          	lw	x15,12(x2)
   100494:	00a00713          	addi	x14,x0,10
   100498:	00000693          	addi	x13,x0,0
-  10049c:	fc9ff06f          	jal	x0,100464 <bprintf+0x14c>
+  10049c:	fc9ff06f          	jal	x0,100464 <uprintf+0x14c>
   1004a0:	00c12783          	lw	x15,12(x2)
   1004a4:	00248493          	addi	x9,x9,2
   1004a8:	0007a503          	lw	x10,0(x15)
@@ -328,20 +328,20 @@ Disassembly of section .text:
   1004b0:	00f12623          	sw	x15,12(x2)
   1004b4:	e05ff0ef          	jal	x1,1002b8 <print>
   1004b8:	00ab0b33          	add	x22,x22,x10
-  1004bc:	f2dff06f          	jal	x0,1003e8 <bprintf+0xd0>
+  1004bc:	f2dff06f          	jal	x0,1003e8 <uprintf+0xd0>
   1004c0:	00c12783          	lw	x15,12(x2)
   1004c4:	00a00713          	addi	x14,x0,10
   1004c8:	00000693          	addi	x13,x0,0
   1004cc:	0007a503          	lw	x10,0(x15)
   1004d0:	00100613          	addi	x12,x0,1
   1004d4:	00478793          	addi	x15,x15,4
-  1004d8:	f99ff06f          	jal	x0,100470 <bprintf+0x158>
+  1004d8:	f99ff06f          	jal	x0,100470 <uprintf+0x158>
   1004dc:	00c12783          	lw	x15,12(x2)
   1004e0:	01000713          	addi	x14,x0,16
   1004e4:	00100693          	addi	x13,x0,1
-  1004e8:	f7dff06f          	jal	x0,100464 <bprintf+0x14c>
+  1004e8:	f7dff06f          	jal	x0,100464 <uprintf+0x14c>
   1004ec:	00000513          	addi	x10,x0,0
-  1004f0:	f3dff06f          	jal	x0,10042c <bprintf+0x114>
+  1004f0:	f3dff06f          	jal	x0,10042c <uprintf+0x114>
 
 001004f4 <__divsi3>:
   1004f4:	06054063          	blt	x10,x0,100554 <__umodsi3+0x10>
@@ -409,7 +409,7 @@ Disassembly of section .text:
   1005cc:	00050613          	addi	x12,x10,0
   1005d0:	67058593          	addi	x11,x11,1648 # 100670 <main+0xc8>
   1005d4:	00410513          	addi	x10,x2,4
-  1005d8:	d41ff0ef          	jal	x1,100318 <bprintf>
+  1005d8:	d41ff0ef          	jal	x1,100318 <uprintf>
   1005dc:	01c12083          	lw	x1,28(x2)
   1005e0:	00000513          	addi	x10,x0,0
   1005e4:	02010113          	addi	x2,x2,32

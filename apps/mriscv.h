@@ -20,6 +20,6 @@ size_t strlen(const char *s);
 void itoa(int n, char *s);
 size_t print(const char *s);
 int putchar(int c);
-int bprintf(char *buff, const char *fmt, ...);
+int uprintf(char *buff, const char *fmt, ...);
 
 #endif
