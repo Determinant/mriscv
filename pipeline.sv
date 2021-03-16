@@ -229,6 +229,7 @@ module decoder(
     output logic ctrl_wb_reg,
     output logic ctrl_wb_csr_reg,
     output logic ctrl_mret_reg,
+    output logic ctrl_wfi_reg,
     output logic [4:0] ctrl_mem_reg,
     output [31:0] ctrl_pc_jump_target,
     output ctrl_jump,
@@ -261,11 +262,11 @@ module decoder(
     wire [11:0] l_offset = inst[31:20];
     wire [11:0] s_offset = {inst[31:25], inst[11:7]};
     wire [11:0] csr = inst[31:20];
+    wire is_wfi = opcode == `SYS && funct3 == 0 && funct12 == `WFI;
     wire is_nop = ctrl_nop ||
                   ctrl_skip_next_reg ||
                   ctrl_exc ||
                   (opcode == `XXXI && inst[31:7] == 0) ||
-                  (opcode == `SYS && funct3 == 0 && funct12 == `WFI) ||
                   opcode == `FEN;
 
     assign ctrl_decoder_stall = ctrl_forward_mload_stall &&
@@ -295,6 +296,7 @@ module decoder(
     wire mret = funct3 == 0 && funct12 == `MRET;
     wire [5:0] sys_exc = funct3 != 0 ? 0 : (
         funct12 == `MRET ? 0 :
+        funct12 == `WFI ? 0 :
         funct12 == `ECALL ? (1 << `EXC_REG_M_ECALL) :
         funct12 == `EBREAK ? (1 << `EXC_REG_M_EBKPT) :
                              (1 << `EXC_REG_INS_ILL));
@@ -447,6 +449,7 @@ module decoder(
                 rd_reg <= rd;
                 pc_reg <= pc;
                 ctrl_mret_reg <= opcode == `SYS && mret;
+                ctrl_wfi_reg <= is_wfi;
                 ctrl_skip_next_reg <= ctrl_jump;
             end else begin // NOP or a bubble
                 `ifdef PIPELINE_DEBUG
@@ -485,6 +488,7 @@ module executor(
     input ctrl_wb,
     input ctrl_wb_csr,
     input ctrl_mret,
+    input ctrl_wfi,
     input [4:0] ctrl_mem,
 
     // stage output data
@@ -499,6 +503,7 @@ module executor(
     output logic ctrl_wb_reg,
     output logic ctrl_wb_csr_reg,
     output logic ctrl_mret_reg,
+    output logic ctrl_wfi_reg,
     output logic [4:0] ctrl_mem_reg,
 
     output ctrl_forward_valid,
@@ -559,6 +564,7 @@ module executor(
                 ctrl_wb_reg <= ctrl_wb;
                 ctrl_wb_csr_reg <= ctrl_wb_csr;
                 ctrl_mret_reg <= ctrl_mret;
+                ctrl_wfi_reg <= ctrl_wfi;
                 ctrl_mem_reg <= ctrl_mem;
             end else begin
                 `ifdef PIPELINE_DEBUG
@@ -601,6 +607,7 @@ module memory(
     input ctrl_wb,
     input ctrl_wb_csr,
     input ctrl_mret,
+    input ctrl_wfi,
     input ctrl_nop,
     input [4:0] ctrl_mem,
 
@@ -616,6 +623,7 @@ module memory(
     output logic ctrl_wb_reg,
     output logic ctrl_wb_csr_reg,
     output logic ctrl_mret_reg,
+    output logic ctrl_wfi_reg,
 
     output ctrl_forward_valid,
     output [4:0] ctrl_forward_rd,
@@ -676,6 +684,7 @@ module memory(
                 ctrl_wb_reg <= ctrl_wb;
                 ctrl_wb_csr_reg <= ctrl_wb_csr;
                 ctrl_mret_reg <= ctrl_mret;
+                ctrl_wfi_reg <= ctrl_wfi;
             end else begin
                 `ifdef PIPELINE_DEBUG
                     $display("[%0t]  [MEM] idle", $time);
@@ -705,6 +714,7 @@ module writeback(
     input ctrl_wb,
     input ctrl_wb_csr,
     input ctrl_mret,
+    input ctrl_wfi,
     input ctrl_nop,
 
     // Reg file
@@ -723,7 +733,8 @@ module writeback(
 
     output ctrl_writeback_stall,
     output ctrl_exc,
-    output [31:0] ctrl_pc_exc_target
+    output [31:0] ctrl_pc_exc_target,
+    output ctrl_wfi_stall
 );
     wire valid = (!ctrl_nop) && (!ctrl_stall) && exc == 0;
     // write back registers
@@ -750,6 +761,7 @@ module writeback(
     assign ctrl_pc_exc_target = is_exc ? (csr_rdata[0] ? (mtvec_base + ({28'b0, cause} << 2)) : mtvec_base) :
                                          (csr_rdata + 4);
     assign ctrl_exc = (!ctrl_nop) && (is_exc || ctrl_mret);
+    assign ctrl_wfi_stall = (!ctrl_nop) && ctrl_wfi && exc == 0;
     `ifdef PIPELINE_DEBUG
         `define wb_print_stat(m, prefix) \
             $display("[%0t] %s[WB ] %s on ", $time, m, prefix, \
@@ -758,9 +770,12 @@ module writeback(
             )
         always_ff @ (posedge ctrl_clk) begin
             if (!ctrl_nop)
-                `wb_print_stat("*", "works");
+                if (!ctrl_stall)
+                    `wb_print_stat("*", "works");
+                else
+                    `wb_print_stat("=", "stalls");
             else
-                $display("[%0t]  [WB ] idle", $time);
+                $display("[%0t] %s[WB ] idle", $time, ctrl_wfi_stall ? "w" : " ");
         end
     `endif
 endmodule
@@ -844,24 +859,33 @@ module pipeline (
         .ctrl_clk(clock)
     );
 
+    wire ctrl_wfi_stall;
+
     wire ctrl_fetcher_stall_in = ctrl_fetcher_stall ||
                                  ctrl_decoder_stall ||
                                  ctrl_executor_stall ||
                                  ctrl_mem_stall ||
-                                 ctrl_writeback_stall;
+                                 ctrl_writeback_stall ||
+                                 ctrl_wfi_stall;
 
     wire ctrl_decoder_stall_in = ctrl_decoder_stall ||
                                  ctrl_fetcher_stall || // because jumps could change PC
                                  ctrl_executor_stall ||
                                  ctrl_mem_stall ||
-                                 ctrl_writeback_stall;
+                                 ctrl_writeback_stall ||
+                                 ctrl_wfi_stall;
 
     wire ctrl_executor_stall_in = ctrl_executor_stall ||
                                   ctrl_mem_stall ||
-                                  ctrl_writeback_stall;
+                                  ctrl_writeback_stall ||
+                                  ctrl_wfi_stall;
 
     wire ctrl_mem_stall_in = ctrl_mem_stall ||
-                             ctrl_writeback_stall;
+                             ctrl_writeback_stall ||
+                             ctrl_wfi_stall;
+
+    wire ctrl_wb_stall_in = ctrl_writeback_stall ||
+                            ctrl_wfi_stall;
 
     wire [31:0] inst_if_o;
     wire [31:0] pc_if_o;
@@ -906,6 +930,7 @@ module pipeline (
     wire ctrl_wb_id_o;
     wire ctrl_wb_csr_id_o;
     wire ctrl_mret_id_o;
+    wire ctrl_wfi_id_o;
     wire [4:0] ctrl_mem_id_o;
 
     wire ctrl_forward_valid_exec;
@@ -975,6 +1000,7 @@ module pipeline (
         .ctrl_wb_reg(ctrl_wb_id_o),
         .ctrl_wb_csr_reg(ctrl_wb_csr_id_o),
         .ctrl_mret_reg(ctrl_mret_id_o),
+        .ctrl_wfi_reg(ctrl_wfi_id_o),
         .ctrl_mem_reg(ctrl_mem_id_o),
         .ctrl_pc_jump_target(pc_jump_target),
         .ctrl_jump(ctrl_jump),
@@ -991,6 +1017,7 @@ module pipeline (
     wire ctrl_wb_ex_o;
     wire ctrl_wb_csr_ex_o;
     wire ctrl_mret_ex_o;
+    wire ctrl_wfi_ex_o;
     wire [4:0] ctrl_mem_ex_o;
 
     executor ex_stage(
@@ -1013,6 +1040,7 @@ module pipeline (
         .ctrl_wb(ctrl_wb_id_o),
         .ctrl_wb_csr(ctrl_wb_csr_id_o),
         .ctrl_mret(ctrl_mret_id_o),
+        .ctrl_wfi(ctrl_wfi_id_o),
         .ctrl_mem(ctrl_mem_id_o),
 
         .res_reg(res_ex_o),
@@ -1026,6 +1054,7 @@ module pipeline (
         .ctrl_wb_reg(ctrl_wb_ex_o),
         .ctrl_wb_csr_reg(ctrl_wb_csr_ex_o),
         .ctrl_mret_reg(ctrl_mret_ex_o),
+        .ctrl_wfi_reg(ctrl_wfi_ex_o),
         .ctrl_mem_reg(ctrl_mem_ex_o),
 
         .ctrl_forward_valid(ctrl_forward_valid_exec),
@@ -1051,6 +1080,7 @@ module pipeline (
     wire ctrl_wb_mem_o;
     wire ctrl_wb_csr_mem_o;
     wire ctrl_mret_mem_o;
+    wire ctrl_wfi_mem_o;
 
     memory mem_stage(
         .res_alu(res_ex_o),
@@ -1072,11 +1102,12 @@ module pipeline (
         .ctrl_reset(reset),
         .ctrl_exc(ctrl_exc),
         .ctrl_stall(ctrl_mem_stall_in),
-        .ctrl_next_stage_stall(0),
+        .ctrl_next_stage_stall(ctrl_wb_stall_in),
         .ctrl_nop(ctrl_nop_ex_o),
         .ctrl_wb(ctrl_wb_ex_o),
         .ctrl_wb_csr(ctrl_wb_csr_ex_o),
         .ctrl_mret(ctrl_mret_ex_o),
+        .ctrl_wfi(ctrl_wfi_ex_o),
         .ctrl_mem(ctrl_mem_ex_o),
 
         .res_reg(res_mem_o),
@@ -1090,6 +1121,7 @@ module pipeline (
         .ctrl_wb_reg(ctrl_wb_mem_o),
         .ctrl_wb_csr_reg(ctrl_wb_csr_mem_o),
         .ctrl_mret_reg(ctrl_mret_mem_o),
+        .ctrl_wfi_reg(ctrl_wfi_mem_o),
 
         .ctrl_forward_valid(ctrl_forward_valid_mem),
         .ctrl_forward_rd(ctrl_forward_rd_mem),
@@ -1111,10 +1143,11 @@ module pipeline (
         .exc(exc_mem_o),
 
         .ctrl_clk(clock),
-        .ctrl_stall(0),
+        .ctrl_stall(ctrl_wb_stall_in),
         .ctrl_wb(ctrl_wb_mem_o),
         .ctrl_wb_csr(ctrl_wb_csr_mem_o),
         .ctrl_mret(ctrl_mret_mem_o),
+        .ctrl_wfi(ctrl_wfi_mem_o),
         .ctrl_nop(ctrl_nop_mem_o),
 
         .reg_waddr(reg_waddr),
@@ -1131,7 +1164,8 @@ module pipeline (
 
         .ctrl_writeback_stall(ctrl_writeback_stall),
         .ctrl_exc(ctrl_exc),
-        .ctrl_pc_exc_target(pc_exc_target)
+        .ctrl_pc_exc_target(pc_exc_target),
+        .ctrl_wfi_stall(ctrl_wfi_stall)
     );
 
     assign _debug_pc = ctrl_nop_mem_o ? 'hffffffff : pc_mem_o;
