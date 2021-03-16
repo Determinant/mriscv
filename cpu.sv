@@ -1,4 +1,4 @@
-`include "pipeline.sv"
+`include "core.sv"
 module cpu(
     input clock,
     input reset,
@@ -17,7 +17,7 @@ module cpu(
     input [31:0] dcache_rdata,
     input dcache_rdy
 );
-    pipeline pl (
+    core _core (
         clock,
         reset,
         _debug_pc,

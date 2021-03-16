@@ -235,19 +235,8 @@ module decoder(
     output ctrl_jump,
     output ctrl_decoder_stall
 );
-    // Layout: [  7 bits          ][5 bits][5 bits][3 bits][ 5 bits         ][ 7 bits ]
-    // R-type: [funct7            ][rs2   ][rs1   ][funct3][rd              ][opcode  ]
-    //
-    // I-type: [    imm[11:0]             ][rs1   ][funct3][rd              ][opcode  ]
-    // S-type: [imm[11:5]         ][rs2   ][rs1   ][funct3][imm[4:0]        ][opcode  ]
-    // B-type: [imm[12]][imm[10:5]]........................[imm[4:1][imm[11]]..........
-    // U-type: [                imm[31:12]                ][rd              ][opcode  ]
-    // J-type: [imm[20]][ imm[10:1] ][imm[11]][imm[19:12] ]............................
-    //          ^
-    //          |____ sign
-
-    // instruction fields
     logic ctrl_skip_next_reg;
+
     wire [6:0] opcode = inst[6:0];
     wire [2:0] funct3 = inst[14:12];
     wire [11:0] funct12 = inst[31:20];
@@ -780,7 +769,7 @@ module writeback(
     `endif
 endmodule
 
-module pipeline (
+module core (
     input clock,
     input reset,
     output [31:0] _debug_pc,
