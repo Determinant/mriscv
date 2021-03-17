@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 
 const UART_TXDATA: *mut u32 = 0x00001000 as *mut u32;
+const MTIME: *mut u32 = 0x00002000 as *mut u32;
+const MTIMECMP: *mut u32 = 0x00002008 as *mut u32;
 
 fn int_to_string(_n: i32, s: &mut [u8], sign: bool, uppercase: bool, base: u8) -> usize {
     let neg;
@@ -61,6 +63,15 @@ impl core::fmt::Write for Serial {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         print(s);
         Ok(())
+    }
+}
+
+pub fn set_timer(ncycles: u32) {
+    unsafe {
+        riscv::register::mie::clear_mtimer();
+        MTIME.write_volatile(0);
+        MTIMECMP.write_volatile(ncycles as u32);
+        riscv::register::mie::set_mtimer();
     }
 }
 

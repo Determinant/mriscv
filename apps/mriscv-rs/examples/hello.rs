@@ -16,6 +16,14 @@ fn my_exception_handler(_trap_frame: &riscv_rt::TrapFrame) {
     );
 }
 
+const INTERVAL: u32 = 0x1000000;
+
+#[export_name = "MachineTimer"]
+fn timer_handler(_trap_frame: &riscv_rt::TrapFrame) {
+    uprintln!(mriscv::Serial, "timer goes off! reset...");
+    mriscv::set_timer(INTERVAL);
+}
+
 #[entry]
 fn main() -> ! {
     let mut s = mriscv::Serial;
@@ -29,6 +37,9 @@ fn main() -> ! {
         riscv::register::time::read()
     ); // triggers an exception
     uprintln!(s, "execution is resumed");
+    unsafe {riscv::register::mstatus::set_mie();}
+    mriscv::set_timer(INTERVAL);
+    uprintln!(s, "timer set");
     loop {
         unsafe {
             riscv::asm::wfi();

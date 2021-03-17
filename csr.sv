@@ -4,10 +4,7 @@
     `endif
 `endif
 
-// Definitions copied from Linux kernel:
-// https://github.com/torvalds/linux/blob/master/arch/riscv/include/asm/csr.h
-// Comments copied from RISC-V Volume II
-
+// RISC-V Volume II
 // M-mode
 `define CSR_MSTATUS		'h300 // Machine status register.
 `define CSR_MISA		'h301 // ISA and extensions. (WARL)
@@ -21,12 +18,6 @@
 `define CSR_PMPCFG0		'h3a0 // Physical memory protection configuration.
 `define CSR_PMPADDR0	'h3b0 // Physical memory protection address register.
 `define CSR_MHARTID		'hf14 // Hardware thread ID.
-
-// interrupts
-/* Interrupt causes (minus the high bit) */
-`define IRQ_M_SOFT		3  // Machine software interrupt
-`define IRQ_M_TIMER		7  // Machine timer interrupt
-`define IRQ_M_EXT		11 // Machine external interrupt
 
 // WPRI: Reserved Writes Preserve Values, Reads Ignore Values
 // WLRL: Write/Read Only Legal Values
@@ -44,13 +35,17 @@ module csr(
 
     input [31:0] trap_pc,
     input [4:0] trap_info,
+    input [2:0] ctrl_mxip, // [0] external interrupt pending
+                           // [1] software interrupt pending
+                           // [2] timer interrupt pending
     input ctrl_clk,
     input ctrl_reset,
     input ctrl_trap,
     input ctrl_mret,
     output ctrl_mie, // whether interrupts are globally enabled
-    output ctrl_mpie, // holds the value of the interrupt-enable bit active prior to the trap
-    output ctrl_addr_valid
+    output [2:0] ctrl_mxie,
+    output ctrl_addr_valid,
+    output ctrl_mcause_is_irq
 );
     // misa: RV32I
     logic [31:0] misa;
@@ -71,13 +66,14 @@ module csr(
     // SD is zero
     // UIE is zero
     // UPIE is zero
-    assign ctrl_mpie = mstatus[7]; // interrupt-enable bit active prior to the trap
     assign ctrl_mie = mstatus[3]; // interrupt-enable bit
 
-    // mip/mie
-    logic [31:0] mip;
+    // mie
     logic [31:0] mie;
-    localparam [31:0] mi_mask = {{16{1'b1}}, 4'b0, 12'b1_0_0_0_1_0_0_0_1_0_0_0};
+    localparam [31:0] mie_mask = {{16{1'b1}}, 4'b0, 12'b1_0_0_0_1_0_0_0_1_0_0_0};
+    assign ctrl_mxie[0] = mie[11];
+    assign ctrl_mxie[1] = mie[3];
+    assign ctrl_mxie[2] = mie[7];
     // MEIx_(WPRI)_SEIx_UEIx_MTIx_WPRI_STIx_UTIx_MSIx_(WPRI)_SSIx_USIx
 
     logic [31:0] mtvec;
@@ -85,13 +81,14 @@ module csr(
     logic [31:0] mepc;
     logic [31:0] mcause;
     logic [31:0] mtval;
+    assign ctrl_mcause_is_irq = mcause[31];
 
     localparam [31:0] mhartid = 0; // Hart ID is always 0
     localparam _mhartid = mhartid;
 
     wire [31:0] _mstatus = (mstatus & (~mstatus_mask)) | (wdata & mstatus_mask);
     wire [31:0] _misa = (misa & (~misa_mask)) | (wdata & misa_mask);
-    wire [31:0] _mie = (mie & (~mi_mask)) | (wdata & mi_mask);
+    wire [31:0] _mie = (mie & (~mie_mask)) | (wdata & mie_mask);
     wire [31:0] _mtvec = (wdata[1:0] < 2) ? wdata : mtvec;
     wire [31:0] _mscratch = wdata;
     wire [31:0] _mepc = {wdata[31:2], 2'b00};
@@ -103,7 +100,7 @@ module csr(
                                      wdata[30:0] != 10 &&
                                      wdata[30:0] != 14)) ? wdata : mcause;
     wire [31:0] _mtval = wdata;
-    wire [31:0] _mip = (mip & (~mi_mask)) | (wdata & mi_mask);
+    wire [31:0] _mip = {20'b0, ctrl_mxip[0], 3'b0, ctrl_mxip[2], 3'b0, ctrl_mxip[1], 3'b0};
 
     // used by trap handling logic
     wire [31:0] trap_mstatus = {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]};
@@ -122,7 +119,7 @@ module csr(
         `read_csr(raddr, `CSR_MEPC, mepc) : \
         `read_csr(raddr, `CSR_MCAUSE, mcause) : \
         `read_csr(raddr, `CSR_MTVAL, mtval) : \
-        `read_csr(raddr, `CSR_MIP, mip) : \
+        (raddr == `CSR_MIP) ? {_mip, 1'b1} : \
         `read_csr(raddr, `CSR_MHARTID, mhartid) : 33'b0)
 
 
@@ -137,7 +134,6 @@ module csr(
         if (ctrl_reset) begin
             misa <= 'b01_0000_00000000000000000100000000; // RV32I
             mstatus <= 'b0_00000000_0_0_0_0_0_0_00_00_11_00_0_0_0_0_0_0_0_0_0;
-            mip <= {32{1'b0}};
             mie <= {32{1'b0}};
             mtvec <= 'h00000000;
             mscratch <= 'h00000000;
@@ -181,7 +177,6 @@ module csr(
                 `CSR_MEPC: mepc <= _mepc;
                 `CSR_MCAUSE: mcause <= _mcause;
                 `CSR_MTVAL: mtval <= _mtval;
-                `CSR_MIP: mip <= _mip;
                 default:;
             endcase
         end

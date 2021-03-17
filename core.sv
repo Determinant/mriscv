@@ -20,7 +20,7 @@
 `define SX      7'b0100011 // SB, SH, SW
 `define XXXI    7'b0010011 // ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI
 `define XXX     7'b0110011 // ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND
-`define SYS     7'b1110011 // ECALL, EBREAK, CSRx
+`define SYS     7'b1110011 // WFI, ECALL, EBREAK, CSRx
 // NOTE: fence will be interpreted as a nop
 `define FEN     7'b0001111 // FENCE
 
@@ -56,6 +56,10 @@
 `define EBREAK 12'b000000000001
 `define MRET   12'b001100000010
 `define WFI    12'b000100000101
+
+`define IRQ_M_SOFT		3  // Machine software interrupt
+`define IRQ_M_TIMER		7  // Machine timer interrupt
+`define IRQ_M_EXT		11 // Machine external interrupt
 
 `define EXC_REG_INS_ILL    0
 `define EXC_REG_INS_ALIGN  1
@@ -102,10 +106,7 @@ module register_file(
     end
 endmodule
 
-module exception_decode(
-    input [5:0] eid,
-    output [3:0] code
-);
+module exception_decode(input [5:0] eid, output [3:0] code);
     assign code = eid[0] ? `EXC_INS_ILL :
                   eid[1] ? `EXC_INS_ALIGN :
                   eid[2] ? `EXC_M_ECALL :
@@ -113,6 +114,13 @@ module exception_decode(
                   eid[4] ? `EXC_ST_ALIGN :
                   eid[5] ? `EXC_LD_ALIGN : 4'bx;
 endmodule
+
+module interrupt_decode(input [2:0] eid, output [3:0] code);
+    assign code = eid[0] ? `IRQ_M_EXT:
+                  eid[1] ? `IRQ_M_SOFT:
+                  eid[2] ? `IRQ_M_TIMER: 4'bx;
+endmodule
+
 
 module fetcher(
     input [31:0] pc_jump_target,
@@ -123,7 +131,7 @@ module fetcher(
     input ctrl_stall,
     input ctrl_next_stage_stall,
     input ctrl_jump,
-    input ctrl_exc,
+    input ctrl_trap,
 
     // i-cache communication
     output [31:0] icache_addr,
@@ -135,7 +143,8 @@ module fetcher(
     output logic [31:0] pc_reg,
     output logic [5:0] exc_reg,
     output logic ctrl_nop_reg,
-    output ctrl_fetcher_stall
+    output ctrl_fetcher_stall,
+    output [31:0] next_pc
 );
     logic [31:0] pc;
 
@@ -143,10 +152,11 @@ module fetcher(
     assign icache_addr = pc;
     assign icache_req = ins_aligned;
     assign ctrl_fetcher_stall = ins_aligned && !icache_rdy;
+    assign next_pc = ctrl_jump ? pc_jump_target : (pc + 4);
     `ifdef PIPELINE_DEBUG
         `define if_print_stat(m, prefix) \
-            $display("[%0t] %s[IF ] %s on pc=0x%h (j=0x%h,%b;e=0x%h,%b)", \
-                $time, m, prefix, pc, pc_jump_target, ctrl_jump, pc_exc_target, ctrl_exc)
+            $display("[%0t] %s[IF ] %s on pc=0x%h (j=0x%h,%b;t=0x%h,%b)", \
+                $time, m, prefix, pc, pc_jump_target, ctrl_jump, pc_exc_target, ctrl_trap)
     `endif
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
@@ -159,8 +169,7 @@ module fetcher(
             `ifdef PIPELINE_DEBUG
                 `if_print_stat("*", "works");
             `endif
-            pc <= ctrl_exc ? pc_exc_target :
-                  ctrl_jump ? pc_jump_target : (pc + 4);
+            pc <= ctrl_trap ? pc_exc_target : next_pc;
             inst_reg <= icache_data;
             pc_reg <= pc;
             exc_reg <= {5'b0, !ins_aligned} << `EXC_REG_INS_ALIGN;
@@ -623,6 +632,7 @@ module memory(
     output [11:0] ctrl_forward_csr_rd,
     output [31:0] forward_csr_data,
 
+    output ctrl_timer_irq,
     output ctrl_mem_stall
 );
     wire is_nop = ctrl_nop || ctrl_exc;
@@ -630,6 +640,7 @@ module memory(
     logic [63:0] mregs [1:0];
     wire [1:0] mreg_addr = dcache_addr[31:3] == `MTIME_ADDR ? 'b01 :
                            dcache_addr[31:3] == `MTIMECMP_ADDR ? 'b11 : 0;
+    assign ctrl_timer_irq = mregs[0] >= mregs[1];
 
     wire aligned = dcache_ws == 2'b01 ? (dcache_addr[0] == 0) :
                    dcache_ws == 2'b10 ? (dcache_addr[1:0] == 0) : 1;
@@ -663,14 +674,16 @@ module memory(
     wire [31:0] res = (ctrl_mem[1:0] == 2'b10) ? res_mem : res_alu;
 
     always_ff @ (posedge ctrl_clk) begin
-        if (ctrl_reset)
+        if (ctrl_reset) begin
             ctrl_nop_reg <= 1;
+            mregs[0] <= 0;
+        end
         else if (!ctrl_stall) begin
             `ifdef PIPELINE_DEBUG
                 `define mem_print_stat(m, prefix) \
                     $display("[%0t] %s[MEM] %s on ", $time, m, prefix, \
-                            "pc=0x%h, res_alu=0x%h tmp=0x%h rd=%0d ctrl_wb=(%b,%b) ctrl_mem=%5b", \
-                            pc, res_alu, tmp, rd, ctrl_wb, ctrl_wb_csr, ctrl_mem)
+                            "pc=0x%h, res_alu=0x%h tmp=0x%h rd=%0d ctrl_wb=(%b,%b) ctrl_mem=%5b mtime=%h mtimcmp=%h", \
+                            pc, res_alu, tmp, rd, ctrl_wb, ctrl_wb_csr, ctrl_mem, mregs[0], mregs[1])
             `endif
             if (!is_nop) begin
                 `ifdef PIPELINE_DEBUG
@@ -713,6 +726,8 @@ module memory(
             if (!ctrl_next_stage_stall)
                 ctrl_nop_reg <= 1;
         end
+        if (is_nop || !(mreg_addr[0] && dcache_wr && mreg_addr[1] == 0))
+            mregs[0] <= mregs[0] + 1; // tick the timer
     end
 endmodule
 
@@ -732,6 +747,12 @@ module writeback(
     input ctrl_wfi,
     input ctrl_nop,
 
+    input ctrl_timer_irq,
+    input ctrl_mie,
+    input [2:0] ctrl_mxie,
+    input [31:0] fetcher_next_pc,
+    input ctrl_mcause_is_irq,
+
     // Reg file
     output [4:0] reg_waddr,
     output [31:0] reg_wdata,
@@ -748,9 +769,15 @@ module writeback(
 
     output ctrl_writeback_stall,
     output ctrl_exc,
+    output ctrl_trap,
     output [31:0] ctrl_pc_exc_target,
-    output ctrl_wfi_stall
+    output ctrl_wfi_stall,
+    output [2:0] ctrl_mxip
 );
+    assign ctrl_mxip = {ctrl_timer_irq, 2'b00};
+
+    wire is_exc = exc != 0;
+    wire is_trap = is_exc || ((ctrl_mxie & ctrl_mxip) != 0 && ctrl_mie);
     wire valid = (!ctrl_nop) && (!ctrl_stall) && exc == 0;
     // write back registers
     assign reg_waddr = rd;
@@ -766,22 +793,25 @@ module writeback(
     // 1. change PC of fetcher for the next cycle according to mtvec.
     // 2. mark all instructions in previous stages as NOP.
     // 3. push a special flag to writeback stage (so it writes back all CSR changes in the next cycle).
-    exception_decode _exc_decode(exc, cause);
+    exception_decode _exc_decode(exc, ecause);
+    interrupt_decode _irq_decode(ctrl_mxie & ctrl_mxip, icause);
     wire [31:0] mtvec_base = {csr_rdata[31:2], 2'b00};
-    wire [3:0] cause;
-    wire is_exc = exc != 0;
-    assign csr_raddr = is_exc ? `CSR_MTVEC : `CSR_MEPC;
-    assign csr_trap_pc = pc;
-    assign csr_trap_info = {1'b0, cause};
-    assign ctrl_pc_exc_target = is_exc ? (csr_rdata[0] ? (mtvec_base + {26'b0, cause, 2'b0}) : mtvec_base) :
-                                         (csr_rdata + 4);
-    assign ctrl_exc = (!ctrl_nop) && (is_exc || ctrl_mret);
-    assign ctrl_wfi_stall = (!ctrl_nop) && ctrl_wfi && exc == 0;
+    wire [3:0] icause;
+    wire [3:0] ecause;
+    wire [3:0] cause = is_exc ? ecause : icause;
+    assign csr_raddr = is_trap ? `CSR_MTVEC : `CSR_MEPC;
+    assign csr_trap_pc = is_exc ? pc : fetcher_next_pc;
+    assign csr_trap_info = {!is_exc, cause};
+    assign ctrl_pc_exc_target = is_trap ? (csr_rdata[0] ? (mtvec_base + {26'b0, cause, 2'b0}) : mtvec_base) :
+                                          (csr_rdata + (ctrl_mcause_is_irq ? 0 : 4));
+    assign ctrl_trap = (!ctrl_nop) && (is_trap || ctrl_mret);
+    assign ctrl_exc = (!ctrl_nop) && (is_exc || ctrl_mret); // exceptions and mret will clear the pipeline
+    assign ctrl_wfi_stall = (!ctrl_nop) && ctrl_wfi && (!is_trap);
     `ifdef PIPELINE_DEBUG
         `define wb_print_stat(m, prefix) \
             $display("[%0t] %s[WB ] %s on ", $time, m, prefix, \
-                    "pc=0x%h res=0x%h tmp=0x%h e=0x%h exc=%b rd=%0d rd_csr=0x%h mret=%b", \
-                    pc, res, tmp, ctrl_pc_exc_target, exc, rd, rd_csr, ctrl_mret \
+                    "pc=0x%h res=0x%h tmp=0x%h e=0x%h exc=%b rd=%0d rd_csr=0x%h mxie=%b mxip=%b mret=%b", \
+                    pc, res, tmp, ctrl_pc_exc_target, exc, rd, rd_csr, ctrl_mxie, ctrl_mxip, ctrl_mret \
             )
         always_ff @ (posedge ctrl_clk) begin
             if (!ctrl_nop)
@@ -821,11 +851,19 @@ module core (
     wire [31:0] pc_exc_target;
     wire ctrl_jump;
     wire ctrl_exc;
+    wire ctrl_trap;
     wire ctrl_fetcher_stall;
     wire ctrl_decoder_stall;
     wire ctrl_executor_stall;
     wire ctrl_mem_stall;
     wire ctrl_writeback_stall;
+    wire ctrl_timer_irq;
+    wire ctrl_mie;
+    wire [2:0] ctrl_mxie;
+    wire [2:0] ctrl_mxip;
+    wire [31:0] fetcher_next_pc;
+    wire ctrl_mcause_is_irq;
+
     wire [4:0] reg_raddr1;
     wire [4:0] reg_raddr2;
     wire [31:0] reg_rdata1;
@@ -855,13 +893,16 @@ module core (
         .wen(csr_wen),
         .trap_pc(csr_trap_pc),
         .trap_info(csr_trap_info),
+        .ctrl_mxip(ctrl_mxip),
+
         .ctrl_clk(clock),
         .ctrl_reset(reset),
-        .ctrl_trap(ctrl_exc),
+        .ctrl_trap(ctrl_trap),
         .ctrl_mret(ctrl_mret_mem_o),
-        .ctrl_mie(),
-        .ctrl_mpie(),
-        .ctrl_addr_valid(ctrl_csr_addr_valid)
+        .ctrl_mie(ctrl_mie),
+        .ctrl_mxie(ctrl_mxie),
+        .ctrl_addr_valid(ctrl_csr_addr_valid),
+        .ctrl_mcause_is_irq(ctrl_mcause_is_irq)
     );
 
     register_file main_reg(
@@ -917,7 +958,7 @@ module core (
         .ctrl_stall(ctrl_fetcher_stall_in),
         .ctrl_next_stage_stall(ctrl_decoder_stall_in),
         .ctrl_jump(ctrl_jump),
-        .ctrl_exc(ctrl_exc),
+        .ctrl_trap(ctrl_trap),
 
         .icache_addr(icache_addr),
         .icache_req(icache_req),
@@ -929,7 +970,8 @@ module core (
         .exc_reg(exc_if_o),
 
         .ctrl_nop_reg(ctrl_nop_if_o),
-        .ctrl_fetcher_stall(ctrl_fetcher_stall)
+        .ctrl_fetcher_stall(ctrl_fetcher_stall),
+        .next_pc(fetcher_next_pc)
     );
 
     wire [31:0] op1_id_o;
@@ -1148,6 +1190,7 @@ module core (
         .ctrl_forward_csr_rd(ctrl_forward_csr_rd_mem),
         .forward_csr_data(forward_csr_data_mem),
 
+        .ctrl_timer_irq(ctrl_timer_irq),
         .ctrl_mem_stall(ctrl_mem_stall)
     );
 
@@ -1167,6 +1210,12 @@ module core (
         .ctrl_wfi(ctrl_wfi_mem_o),
         .ctrl_nop(ctrl_nop_mem_o),
 
+        .ctrl_timer_irq(ctrl_timer_irq),
+        .ctrl_mie(ctrl_mie),
+        .ctrl_mxie(ctrl_mxie),
+        .fetcher_next_pc(fetcher_next_pc),
+        .ctrl_mcause_is_irq(ctrl_mcause_is_irq),
+
         .reg_waddr(reg_waddr),
         .reg_wdata(reg_wdata),
         .reg_wen(reg_wen),
@@ -1181,8 +1230,10 @@ module core (
 
         .ctrl_writeback_stall(ctrl_writeback_stall),
         .ctrl_exc(ctrl_exc),
+        .ctrl_trap(ctrl_trap),
         .ctrl_pc_exc_target(pc_exc_target),
-        .ctrl_wfi_stall(ctrl_wfi_stall)
+        .ctrl_wfi_stall(ctrl_wfi_stall),
+        .ctrl_mxip(ctrl_mxip)
     );
 
     assign _debug_pc = ctrl_nop_mem_o ? 'hffffffff : pc_mem_o;
