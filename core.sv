@@ -6,7 +6,9 @@
     `endif
 `endif
 
-`define PC_RESET 32'h00100000
+`define PC_RESET        32'h00100000
+`define MTIME_ADDR      32'h00002000
+`define MTIMECMP_ADDR   32'h00002008
 
 // opcode
 `define LUI     7'b0110111
@@ -339,7 +341,7 @@ module decoder(
                         op2_reg <= xxxi;
                         exc_reg <= exc;
                         ctrl_alu_func_reg <= funct3;
-                        ctrl_alu_sign_ext_reg <= funct3 == `FSRX ? inst[30] : 0;
+                        ctrl_alu_sign_ext_reg <= (funct3 == `FSRX) && inst[30];
                         ctrl_wb_reg <= 1;
                         ctrl_wb_csr_reg <= 0;
                         ctrl_mem_reg <= 0;
@@ -624,7 +626,9 @@ module memory(
     output ctrl_mem_stall
 );
     wire is_nop = ctrl_nop || ctrl_exc;
-    assign dcache_req = (!is_nop) && ctrl_mem[1] && exc == 0;
+    wire aligned = dcache_ws == 2'b01 ? (dcache_addr[0] == 0) :
+                   dcache_ws == 2'b10 ? (dcache_addr[1:0] == 0) : 1;
+    assign dcache_req = (!is_nop) && ctrl_mem[1] && exc == 0 && aligned;
     assign dcache_wr = ctrl_mem[0];
     assign dcache_ws = ctrl_mem[3:2]; // SB/SH/SW
     assign dcache_wdata = tmp;
@@ -668,7 +672,8 @@ module memory(
                 rd_csr_reg <= rd_csr;
                 tmp_reg <= tmp;
                 pc_reg <= pc;
-                exc_reg <= exc;
+                exc_reg <= exc | ({6{ctrl_mem[1]}} & (
+                    {5'b0, !aligned} << (dcache_wr ? `EXC_ST_ALIGN : `EXC_LD_ALIGN)));
                 ctrl_wb_reg <= ctrl_wb;
                 ctrl_wb_csr_reg <= ctrl_wb_csr;
                 ctrl_mret_reg <= ctrl_mret;
