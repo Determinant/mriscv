@@ -213,6 +213,7 @@ module decoder(
     input ctrl_stall,
     input ctrl_next_stage_stall,
     input ctrl_nop,
+    input ctrl_csr_addr_valid,
 
     // stage output data
     output logic [31:0] op1_reg,    // op1 for ALU
@@ -283,7 +284,7 @@ module decoder(
                                                                                reg_rdata2;
     // CSR
     wire mret = funct3 == 0 && funct12 == `MRET;
-    wire [5:0] sys_exc = funct3 != 0 ? 0 : (
+    wire [5:0] sys_exc = funct3 != 0 ? ({5'b0, !ctrl_csr_addr_valid} << `EXC_REG_INS_ILL) : (
         funct12 == `MRET ? 0 :
         funct12 == `WFI ? 0 :
         funct12 == `ECALL ? (1 << `EXC_REG_M_ECALL) :
@@ -302,7 +303,6 @@ module decoder(
         opcode == `JAL ? pc + $signed({{11{jal_offset[20]}}, jal_offset}) :
         opcode == `JALR ? op1 + $signed({{20{jalr_offset[11]}}, jalr_offset}) :
         opcode == `BXX ? pc + $signed({{19{b_offset[12]}}, b_offset}) : 'bx;
-        //(opcode == `SYS && mret) ? (csr_rdata + 4) : 'bx;
     assign ctrl_jump = (!ctrl_skip_next_reg) &&
         (opcode == `JAL ? 1 :
         opcode == `JALR ? 1 :
@@ -312,7 +312,6 @@ module decoder(
                   (($signed(op1) < $signed(op2)) ^ (funct3[0])) : // BLT & BGE
                   ((op1 < op2) ^ (funct3[0])))) : // BLTU & BGEU
                   0);
-        //(opcode == `SYS && mret) ? 1 : 0);
 
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
@@ -817,7 +816,7 @@ module core (
     wire csr_wen;
     wire [31:0] csr_trap_pc;
     wire [4:0] csr_trap_info;
-
+    wire ctrl_csr_addr_valid;
 
     csr csr_reg(
         .raddr1(csr_raddr1),
@@ -834,7 +833,8 @@ module core (
         .ctrl_trap(ctrl_exc),
         .ctrl_mret(ctrl_mret_mem_o),
         .ctrl_mie(),
-        .ctrl_mpie()
+        .ctrl_mpie(),
+        .ctrl_addr_valid(ctrl_csr_addr_valid)
     );
 
     register_file main_reg(
@@ -974,6 +974,7 @@ module core (
         .ctrl_stall(ctrl_decoder_stall_in),
         .ctrl_next_stage_stall(ctrl_executor_stall_in),
         .ctrl_nop(ctrl_nop_if_o),
+        .ctrl_csr_addr_valid(ctrl_csr_addr_valid),
 
         .op1_reg(op1_id_o),
         .op2_reg(op2_id_o),

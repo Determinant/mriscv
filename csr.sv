@@ -49,7 +49,8 @@ module csr(
     input ctrl_trap,
     input ctrl_mret,
     output ctrl_mie, // whether interrupts are globally enabled
-    output ctrl_mpie // holds the value of the interrupt-enable bit active prior to the trap
+    output ctrl_mpie, // holds the value of the interrupt-enable bit active prior to the trap
+    output ctrl_addr_valid
 );
     // misa: RV32I
     logic [31:0] misa;
@@ -85,7 +86,7 @@ module csr(
     logic [31:0] mcause;
     logic [31:0] mtval;
 
-    localparam mhartid = 0; // Hart ID is always 0
+    localparam [31:0] mhartid = 0; // Hart ID is always 0
     localparam _mhartid = mhartid;
 
     wire [31:0] _mstatus = (mstatus & (~mstatus_mask)) | (wdata & mstatus_mask);
@@ -110,9 +111,9 @@ module csr(
     wire [31:0] mret_mstatus = {mstatus[31:8], 1'b0, mstatus[6:4], mstatus[7], mstatus[2:0]};
 
     `define read_csr(raddr, reg_addr, reg) \
-        (raddr == reg_addr) ? (raddr == waddr ? _``reg : reg)
+        (raddr == reg_addr) ? {(raddr == waddr ? _``reg : reg), 1'b1}
 
-    `define read_csr_with_bypass(raddr) \
+    `define read_csr_with_bypass(raddr) ( \
         `read_csr(raddr, `CSR_MSTATUS, mstatus) : \
         `read_csr(raddr, `CSR_MISA, misa) : \
         `read_csr(raddr, `CSR_MIE, mie) : \
@@ -122,11 +123,15 @@ module csr(
         `read_csr(raddr, `CSR_MCAUSE, mcause) : \
         `read_csr(raddr, `CSR_MTVAL, mtval) : \
         `read_csr(raddr, `CSR_MIP, mip) : \
-        `read_csr(raddr, `CSR_MHARTID, mhartid) : 'bx
+        `read_csr(raddr, `CSR_MHARTID, mhartid) : 33'b0)
 
 
-    assign rdata1 = `read_csr_with_bypass(raddr1);
-    assign rdata2 = `read_csr_with_bypass(raddr2);
+    wire [32:0] read1 = `read_csr_with_bypass(raddr1);
+    wire [32:0] read2 = `read_csr_with_bypass(raddr2);
+    assign rdata1 = read1[32:1];
+    assign rdata2 = read2[32:1];
+    wire _unused = read2[0];
+    assign ctrl_addr_valid = read1[0];
 
     always_ff @ (posedge ctrl_clk) begin
         if (ctrl_reset) begin
