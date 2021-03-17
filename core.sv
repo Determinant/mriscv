@@ -7,8 +7,8 @@
 `endif
 
 `define PC_RESET        32'h00100000
-`define MTIME_ADDR      32'h00002000
-`define MTIMECMP_ADDR   32'h00002008
+`define MTIME_ADDR      29'h400
+`define MTIMECMP_ADDR   29'h401
 
 // opcode
 `define LUI     7'b0110111
@@ -379,7 +379,7 @@ module decoder(
                     `LX: begin
                         op1_reg <= op1;
                         op2_reg <= {{20{l_offset[11]}}, l_offset};
-                        exc_reg <= exc;
+                        exc_reg <= exc | ({5'b0, funct3[1:0] == 2'b11} << `EXC_REG_INS_ILL);
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
                         ctrl_wb_reg <= 1;
@@ -389,7 +389,7 @@ module decoder(
                     `SX: begin
                         op1_reg <= op1;
                         op2_reg <= {{20{s_offset[11]}}, s_offset};
-                        exc_reg <= exc;
+                        exc_reg <= exc | ({5'b0, funct3[1:0] == 2'b11} << `EXC_REG_INS_ILL);
                         tmp_reg <= op2;
                         ctrl_alu_func_reg <= `FADD;
                         ctrl_alu_sign_ext_reg <= 0;
@@ -626,9 +626,14 @@ module memory(
     output ctrl_mem_stall
 );
     wire is_nop = ctrl_nop || ctrl_exc;
+
+    logic [63:0] mregs [1:0];
+    wire [1:0] mreg_addr = dcache_addr[31:3] == `MTIME_ADDR ? 'b01 :
+                           dcache_addr[31:3] == `MTIMECMP_ADDR ? 'b11 : 0;
+
     wire aligned = dcache_ws == 2'b01 ? (dcache_addr[0] == 0) :
                    dcache_ws == 2'b10 ? (dcache_addr[1:0] == 0) : 1;
-    assign dcache_req = (!is_nop) && ctrl_mem[1] && exc == 0 && aligned;
+    assign dcache_req = (!is_nop) && ctrl_mem[1] && exc == 0 && aligned && (!mreg_addr[0]);
     assign dcache_wr = ctrl_mem[0];
     assign dcache_ws = ctrl_mem[3:2]; // SB/SH/SW
     assign dcache_wdata = tmp;
@@ -646,11 +651,15 @@ module memory(
 
     wire sgn = ctrl_mem[4];
 
+    wire [5:0] mreg_off = {dcache_addr[2:0], 3'b0};
+    wire [31:0] rdata = mreg_addr[0] ?
+                        mregs[mreg_addr[1]][(mreg_off + 31) -: 32] :
+                        dcache_rdata;
+
     wire [31:0] res_mem =
-        dcache_ws == 2'b00 ? {{24{sgn ? dcache_rdata[7] : 1'b0}}, dcache_rdata[7:0]} : // LB/LBU
-        dcache_ws == 2'b01 ? {{16{sgn ? dcache_rdata[15] : 1'b0}}, dcache_rdata[15:0]} : // LH/LHU
-        dcache_ws == 2'b10 ? dcache_rdata : // LW
-                            'bx;
+        dcache_ws == 2'b00 ? {{24{sgn ? rdata[7] : 1'b0}}, rdata[7:0]} : // LB/LBU
+        dcache_ws == 2'b01 ? {{16{sgn ? rdata[15] : 1'b0}}, rdata[15:0]} : // LH/LHU
+                             rdata; // LW
     wire [31:0] res = (ctrl_mem[1:0] == 2'b10) ? res_mem : res_alu;
 
     always_ff @ (posedge ctrl_clk) begin
@@ -667,6 +676,19 @@ module memory(
                 `ifdef PIPELINE_DEBUG
                     `mem_print_stat("*", "works");
                 `endif
+                if (mreg_addr[0] && dcache_wr) begin
+                    `ifdef PIPELINE_DEBUG
+                        $display(
+                            "[%0t] !MREG  writes 0x%h to register %0d (w=%0d)",
+                            $time, dcache_wdata, mreg_addr[1], dcache_ws
+                        );
+                    `endif
+                    case (dcache_ws)
+                        'b00: mregs[mreg_addr[1]][(mreg_off + 7) -: 8] <= dcache_wdata[7:0];
+                        'b01: mregs[mreg_addr[1]][(mreg_off + 15) -: 16] <= dcache_wdata[15:0];
+                        'b10: mregs[mreg_addr[1]][(mreg_off + 31) -: 32] <= dcache_wdata[31:0];
+                    endcase
+                end
                 res_reg <= res;
                 rd_reg <= rd;
                 rd_csr_reg <= rd_csr;
@@ -751,7 +773,7 @@ module writeback(
     assign csr_raddr = is_exc ? `CSR_MTVEC : `CSR_MEPC;
     assign csr_trap_pc = pc;
     assign csr_trap_info = {1'b0, cause};
-    assign ctrl_pc_exc_target = is_exc ? (csr_rdata[0] ? (mtvec_base + ({28'b0, cause} << 2)) : mtvec_base) :
+    assign ctrl_pc_exc_target = is_exc ? (csr_rdata[0] ? (mtvec_base + {26'b0, cause, 2'b0}) : mtvec_base) :
                                          (csr_rdata + 4);
     assign ctrl_exc = (!ctrl_nop) && (is_exc || ctrl_mret);
     assign ctrl_wfi_stall = (!ctrl_nop) && ctrl_wfi && exc == 0;
