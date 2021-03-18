@@ -1,3 +1,11 @@
+mriscv
+======
+
+Yet Another RISC-V toy processor?
+---------------------------------
+
+(WIP)
+
 Requirements
 ------------
 
@@ -24,6 +32,9 @@ Memory Map
 - ``0x00000000`` -- ``0x00000fff``: (reserved)
 - ``0x00001000`` -- ``0x00001000``: UART_TXDATA
 - ``0x00001001`` -- ``0x00001fff``: (reserved)
+- ``0x00002000`` -- ``0x00002007``: MTIME
+- ``0x00002008`` -- ``0x0000200f``: MTIMECMP
+- ``0x00002010`` -- ``0x0009ffff``: (reserved)
 - ``0x000a0000`` -- ``0x000bffff``: VGA graphics
 - ``0x000c0000`` -- ``0x000fffff``: (reserved)
 - ``0x00100000`` -- ``0x001fffff``: PROGRAM ("FLASH")
