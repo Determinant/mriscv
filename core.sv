@@ -334,7 +334,7 @@ module decoder(
                 `define id_print_stat(m, prefix) \
                     $display(\
                         "[%0t] %s[ID ] %s on ",  $time, m, prefix, \
-                        "pc=0x%h exc=%b op1=0x%h op2=0x%h csr_op=0x%h rs1=%0d rs2=%0d "
+                        "pc=0x%h exc=%b op1=0x%h op2=0x%h csr_op=0x%h rs1=%0d rs2=%0d ", \
                         pc, exc, op1, op2, csr_op, rs1, rs2, \
                         "fwd=(0x%h,%0d,%b;0x%h,%0d,%b;0x%h,0x%h,%b;0x%h,0x%h,%b) rd=%0d skip=%b", \
                         forward_data_exec, ctrl_forward_rd_exec, ctrl_forward_valid_exec, \
