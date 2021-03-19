@@ -221,7 +221,7 @@ module decoder(
 
     input ctrl_clk,
     input ctrl_reset,
-    input ctrl_exc,
+    input ctrl_trap,
     input ctrl_stall,
     input ctrl_next_stage_stall,
     input ctrl_nop,
@@ -267,7 +267,7 @@ module decoder(
     wire is_wfi = opcode == `SYS && funct3 == 0 && funct12 == `WFI;
     wire is_nop = ctrl_nop ||
                   ctrl_skip_next_reg ||
-                  ctrl_exc ||
+                  ctrl_trap ||
                   (opcode == `XXXI && inst[31:7] == 0) ||
                   opcode == `FEN;
 
@@ -455,7 +455,7 @@ module decoder(
                 `ifdef PIPELINE_DEBUG
                     $display("[%0t]  [ID ] idle", $time);
                 `endif
-                ctrl_skip_next_reg <= ctrl_exc;
+                ctrl_skip_next_reg <= ctrl_trap;
             end
             ctrl_nop_reg <= is_nop;
         end else begin // stalled
@@ -479,7 +479,7 @@ module executor(
 
     input ctrl_clk,
     input ctrl_reset,
-    input ctrl_exc,
+    input ctrl_trap,
     input ctrl_stall,
     input ctrl_next_stage_stall,
     input [2:0] ctrl_alu_func,
@@ -517,7 +517,7 @@ module executor(
 
     output ctrl_executor_stall
 );
-    wire is_nop = ctrl_nop || ctrl_exc;
+    wire is_nop = ctrl_nop || ctrl_trap;
     assign ctrl_executor_stall = 0;
     // the second clause is for LX (has to wait after memory load, and ALU's result should be ignored)
     assign ctrl_forward_valid = (!is_nop) && ctrl_wb && (!ctrl_mem[1]) && rd != 0;
@@ -601,7 +601,7 @@ module memory(
 
     input ctrl_clk,
     input ctrl_reset,
-    input ctrl_exc,
+    input ctrl_trap,
     input ctrl_stall,
     input ctrl_next_stage_stall,
     input ctrl_wb,
@@ -639,7 +639,7 @@ module memory(
     output ctrl_timer_irq,
     output ctrl_mem_stall
 );
-    wire is_nop = ctrl_nop || ctrl_exc;
+    wire is_nop = ctrl_nop || ctrl_trap;
 
     logic [63:0] mtime_regs [1:0];
     logic meip;
@@ -793,7 +793,6 @@ module writeback(
     output [4:0] csr_trap_info,
 
     output ctrl_writeback_stall,
-    output ctrl_exc,
     output ctrl_trap,
     output [31:0] ctrl_pc_exc_target,
     output ctrl_wfi_stall,
@@ -834,8 +833,7 @@ module writeback(
     assign csr_trap_info = {!is_exc, cause};
     assign ctrl_pc_exc_target = is_trap ? (csr_rdata[0] ? (mtvec_base + {26'b0, cause, 2'b0}) : mtvec_base) :
                                           (csr_rdata + 4);
-    assign ctrl_trap = is_trap || is_mret;
-    assign ctrl_exc = is_trap || is_mret; // exceptions and mret will clear the pipeline
+    assign ctrl_trap = is_trap || is_mret; // traps and mret will clear the pipeline
     assign ctrl_wfi_stall = (!ctrl_nop) && ctrl_wfi && (!is_trap);
     `ifdef PIPELINE_DEBUG
         `define wb_print_stat(m, prefix) \
@@ -881,7 +879,6 @@ module core (
     wire [31:0] pc_jump_target;
     wire [31:0] pc_exc_target;
     wire ctrl_jump;
-    wire ctrl_exc;
     wire ctrl_trap;
     wire ctrl_fetcher_stall;
     wire ctrl_decoder_stall;
@@ -1068,7 +1065,7 @@ module core (
 
         .ctrl_clk(clock),
         .ctrl_reset(reset),
-        .ctrl_exc(ctrl_exc),
+        .ctrl_trap(ctrl_trap),
         .ctrl_stall(ctrl_decoder_stall_in),
         .ctrl_next_stage_stall(ctrl_executor_stall_in),
         .ctrl_nop(ctrl_nop_if_o),
@@ -1119,7 +1116,7 @@ module core (
 
         .ctrl_clk(clock),
         .ctrl_reset(reset),
-        .ctrl_exc(ctrl_exc),
+        .ctrl_trap(ctrl_trap),
         .ctrl_stall(ctrl_executor_stall_in),
         .ctrl_next_stage_stall(ctrl_mem_stall_in),
         .ctrl_alu_func(ctrl_alu_func_id_o),
@@ -1188,7 +1185,7 @@ module core (
 
         .ctrl_clk(clock),
         .ctrl_reset(reset),
-        .ctrl_exc(ctrl_exc),
+        .ctrl_trap(ctrl_trap),
         .ctrl_stall(ctrl_mem_stall_in),
         .ctrl_next_stage_stall(ctrl_wb_stall_in),
         .ctrl_nop(ctrl_nop_ex_o),
@@ -1261,7 +1258,6 @@ module core (
         .csr_trap_info(csr_trap_info),
 
         .ctrl_writeback_stall(ctrl_writeback_stall),
-        .ctrl_exc(ctrl_exc),
         .ctrl_trap(ctrl_trap),
         .ctrl_pc_exc_target(pc_exc_target),
         .ctrl_wfi_stall(ctrl_wfi_stall),
