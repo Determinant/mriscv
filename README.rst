@@ -72,10 +72,14 @@ Build
 - ``cd`` to repo root.
 - Build RTL simulator: ``make`` (console-only) or ``env ENABLE_SDL=1 make sim`` (with video and keyboard)
 - Build C apps: ``make -C ./apps``
-- Build Rust apps: ``make -C ./apps/mriscv-rs``
+- Build Rust apps:
 
-Example
--------
+  - install rustup: https://rustup.rs/
+  - add rv32i toolchain: ``rustup target add riscv32i-unknown-none-elf``
+  - build examples: ``make -C ./apps/mriscv-rs``
+
+Examples
+--------
 
 - C Hello World: ``./sim -l apps/hello.bin=0x100000``
 - C 8 Queens: ``./sim -l apps/queens.bin=0x100000``
