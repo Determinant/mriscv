@@ -16,7 +16,7 @@ fn my_exception_handler(_trap_frame: &riscv_rt::TrapFrame) {
     );
 }
 
-const INTERVAL: u32 = 0x1000000;
+const INTERVAL: u32 = 0x200000;
 
 #[export_name = "MachineTimer"]
 fn timer_handler(_trap_frame: &riscv_rt::TrapFrame) {

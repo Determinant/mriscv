@@ -4,6 +4,9 @@
 const UART_TXDATA: *mut u32 = 0x00001000 as *mut u32;
 const MTIME: *mut u32 = 0x00002000 as *mut u32;
 const MTIMECMP: *mut u32 = 0x00002008 as *mut u32;
+const FRAMEBUFFER: *mut u8 = 0x10000000 as *mut u8;
+const FB_WIDTH: usize = 640;
+const FB_HEIGHT: usize = 480;
 
 fn int_to_string(_n: i32, s: &mut [u8], sign: bool, uppercase: bool, base: u8) -> usize {
     let neg;
@@ -72,6 +75,13 @@ pub fn set_timer(ncycles: u32) {
         MTIME.write_volatile(0);
         MTIMECMP.write_volatile(ncycles as u32);
         riscv::register::mie::set_mtimer();
+    }
+}
+
+#[inline(always)]
+pub fn get_framebuffer() -> &'static mut [u8] {
+    unsafe {
+        core::slice::from_raw_parts_mut(FRAMEBUFFER, FB_WIDTH * FB_HEIGHT)
     }
 }
 

@@ -4,7 +4,9 @@ GCC_TOOLCHAIN = ../rv32i/
 OBJDUMP = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objdump
 OBJCOPY = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objcopy
 
-OBJS :=	hello.txt hello.bin hello.elf \
+OBJS :=	\
+	hello.txt hello.bin hello.elf \
+	video.txt video.bin video.elf \
 
 all: $(OBJS)
 

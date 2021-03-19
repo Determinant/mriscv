@@ -1,12 +1,17 @@
 #include <cstdio>
 #include <memory>
 #include <vector>
+#include <exception>
 #include <cstdlib>
 #include <cassert>
-#include <exception>
+#include <csignal>
 #include <getopt.h>
 #include "verilated.h"
 #include "Vcpu.h"
+
+#ifdef ENABLE_SDL
+#include <SDL2/SDL.h>
+#endif
 
 #ifdef DEBUG
 #define debug(f_, ...) printf((f_), ##__VA_ARGS__)
@@ -17,7 +22,22 @@
 uint64_t main_time = 0;
 uint32_t halt_addr = 0x00000000; //0x0010001c;
 
-const uint32_t uart_txdata = 0x00001000;
+const uint32_t uart_txdata_addr = 0x00001000;
+const uint32_t framebuffer_addr = 0x10000000;
+
+const uint32_t win_width = 640;
+const uint32_t win_height = 480;
+
+#ifdef ENABLE_SDL
+SDL_Window *window = nullptr;
+SDL_Renderer *sdl_renderer;
+SDL_Texture *frame;
+uint32_t frame_cnt;
+uint8_t frame_tmp[3 * win_width * win_height];
+uint32_t cycles_per_frame = 100000;
+struct timespec prev_time;
+const double fps = 60;
+#endif
 
 double sc_time_stamp() {
     return main_time;
@@ -26,6 +46,7 @@ double sc_time_stamp() {
 class SimulatedRAM {
     std::shared_ptr<Vcpu> cpu;
     std::vector<uint8_t> memory;
+    std::vector<uint8_t> framebuffer;
     size_t capacity;
     uint64_t icache_next_rdy;
     uint64_t dcache_next_rdy;
@@ -33,11 +54,12 @@ class SimulatedRAM {
     int dcache_state; // 0 -> reset; 1 -> reading/writing
 
     public:
-    SimulatedRAM(std::shared_ptr<Vcpu> cpu, size_t capacity): \
+    SimulatedRAM(std::shared_ptr<Vcpu> cpu, size_t capacity, size_t fb_capacity): \
             cpu(cpu), capacity(capacity),
             icache_next_rdy(0),
             dcache_next_rdy(0) {
         memory.resize(capacity);
+        framebuffer.resize(fb_capacity);
         cpu->icache_rdy = 0;
         cpu->dcache_rdy = 0;
     }
@@ -81,7 +103,8 @@ class SimulatedRAM {
                     (memory[cpu->icache_addr + 3] << 24);
                 cpu->icache_rdy = 1;
                 icache_state = 0;
-                debug("icache: read byte @ %08x = %08x\n", cpu->icache_addr, cpu->icache_data);
+                debug("icache: read byte @ %08x = %08x\n",
+                      cpu->icache_addr, cpu->icache_data);
                 //schedule_next_icache_rdy(4);
             } else icache_next_rdy--;
         }
@@ -96,50 +119,61 @@ class SimulatedRAM {
         {
             if (dcache_next_rdy == 0)
             {
-                assert(cpu->dcache_addr + 4 < capacity);
-                if (cpu->dcache_wr)
+                auto addr = cpu->dcache_addr;
+                auto data = cpu->dcache_wdata;
+                if (addr == uart_txdata_addr)
                 {
-                    auto addr = cpu->dcache_addr;
-                    auto data = cpu->dcache_wdata;
-
-                    if (addr == uart_txdata)
+                    if (cpu->dcache_wr)
                     {
                         debug("dcache: write uart = %02x\n", addr, data);
                         putchar((uint8_t)data);
                     }
                     else
                     {
-                        if (cpu->dcache_ws == 0)
-                        {
-                            debug("dcache: write byte @ %08x = %02x\n", addr, data);
-                            memory[addr] = data & 0xff;
-                        }
-                        else if (cpu->dcache_ws == 1)
-                        {
-                            debug("dcache: write halfword @ %08x = %04x\n", addr, data);
-                            memory[addr] = data & 0xff;
-                            memory[addr + 1] = (data >> 8) & 0xff;
-                        }
-                        else if (cpu->dcache_ws == 2)
-                        {
-                            debug("dcache: write word @ %08x = %08x\n", addr, data);
-                            memory[addr] = data & 0xff;
-                            memory[addr + 1] = (data >> 8) & 0xff;
-                            memory[addr + 2] = (data >> 16) & 0xff;
-                            memory[addr + 3] = (data >> 24) & 0xff;
-                        }
-                        else assert(0);
+                        cpu->dcache_rdata = 0;
+                        debug("dcache: read uart = %02x\n", cpu->dcache_rdata);
                     }
                 }
                 else
                 {
-                    if (cpu->dcache_addr == uart_txdata)
+                    uint8_t *m = &memory[0];
+                    if (addr >= framebuffer_addr &&
+                        addr < framebuffer_addr + framebuffer.size())
                     {
-                        cpu->dcache_rdata = 0;
+                        m = &framebuffer[0];
+                        addr -= framebuffer_addr;
                     }
                     else
-                        cpu->dcache_rdata = *(uint32_t *)(&memory[0] + cpu->dcache_addr);
-                    debug("dcache: read word @ %08x = %08x\n", cpu->dcache_addr, cpu->dcache_rdata);
+                        assert(addr + 4 < capacity);
+
+                    if (cpu->dcache_wr)
+                    {
+                        if (cpu->dcache_ws == 0)
+                        {
+                            debug("dcache: write byte @ %08x = %02x\n", addr, data);
+                            m[addr] = data & 0xff;
+                        }
+                        else if (cpu->dcache_ws == 1)
+                        {
+                            debug("dcache: write halfword @ %08x = %04x\n", addr, data);
+                            m[addr] = data & 0xff;
+                            m[addr + 1] = (data >> 8) & 0xff;
+                        }
+                        else if (cpu->dcache_ws == 2)
+                        {
+                            debug("dcache: write word @ %08x = %08x\n", addr, data);
+                            m[addr] = data & 0xff;
+                            m[addr + 1] = (data >> 8) & 0xff;
+                            m[addr + 2] = (data >> 16) & 0xff;
+                            m[addr + 3] = (data >> 24) & 0xff;
+                        }
+                        else assert(0);
+                    }
+                    else
+                    {
+                        cpu->dcache_rdata = *(uint32_t *)(m + addr);
+                        debug("dcache: read word @ %08x = %08x\n", addr, cpu->dcache_rdata);
+                    }
                 }
                 cpu->dcache_rdy = 1;
                 dcache_state = 0;
@@ -158,13 +192,17 @@ class SimulatedRAM {
     void schedule_next_dcache_rdy(uint64_t nstep) {
         dcache_next_rdy = nstep;
     }
+
+    uint8_t *get_framebuffer() {
+        return &framebuffer[0];
+    }
 };
 
 struct SoC {
     std::shared_ptr<Vcpu> cpu;
     SimulatedRAM ram;
 
-    SoC(std::shared_ptr<Vcpu> cpu, size_t mem_cap): cpu(cpu), ram(cpu, mem_cap) {}
+    SoC(std::shared_ptr<Vcpu> cpu, size_t mem_cap, size_t fb_cap): cpu(cpu), ram(cpu, mem_cap, fb_cap) {}
 
     void reset() {
         cpu->clock = 0;
@@ -194,24 +232,78 @@ struct SoC {
     void halt() {
         cpu->final();               // Done simulating
     }
+
+    uint8_t *get_framebuffer() {
+        return ram.get_framebuffer();
+    }
 };
 
 static struct option long_options[] = {
     {"load-image", required_argument, 0, 'l'},
     {"halt-addr", required_argument, 0, 'e'},
+    {"video", no_argument, 0, 'v'},
 };
+
 
 void die(const char *s) {
     fprintf(stderr, "error: %s\n", s);
     exit(1);
 }
 
+void ok_or_die(int ret, const char *s) {
+    if (ret) die(s);
+}
+
+void signal_handler(int) {
+#ifdef ENABLE_SDL
+    if (window)
+    {
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+    }
+#endif
+    exit(0);
+}
+
+#ifdef ENABLE_SDL
+void try_update_screen(uint8_t *fb) {
+    if (window == nullptr || (++frame_cnt < cycles_per_frame))
+        return;
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    double millisec = now.tv_nsec < prev_time.tv_nsec ?
+        (prev_time.tv_nsec - now.tv_nsec) / 1e6 + (now.tv_sec - prev_time.tv_sec - 1) * 1e3 :
+        (now.tv_nsec - prev_time.tv_nsec) / 1e6 + (now.tv_sec - prev_time.tv_sec) * 1e3;
+    // correction of cycles_per_frame
+    cycles_per_frame = (double)cycles_per_frame / millisec / (fps / 1e3);
+    prev_time = now;
+    frame_cnt = 0;
+    uint32_t len = win_width * win_height;
+    for (auto p = fb, v = frame_tmp; p < fb + len; p++, v += 3)
+    {
+        auto c = *p;
+        v[0] = (c & 0x3) << 6;
+        v[1] = (c & 0xc) << 4;
+        v[2] = (c & 0x30) << 2;
+    }
+    uint8_t *frame_dst;
+    int pitch;
+    assert(SDL_LockTexture(frame, nullptr, (void **)&frame_dst, &pitch) == 0);
+    memmove(frame_dst, frame_tmp, pitch * win_height);
+    SDL_UnlockTexture(frame);
+    assert(SDL_RenderCopy(sdl_renderer, frame, nullptr, nullptr) == 0);
+    SDL_RenderPresent(sdl_renderer);
+}
+#endif
+
 int main(int argc, char** argv) {
+    std::signal(SIGINT, signal_handler);
+    bool enable_video = false;
     int optidx = 0;
-    auto soc = SoC(std::make_shared<Vcpu>(), 40 << 20);
+    auto soc = SoC(std::make_shared<Vcpu>(), 40 << 20, 320 << 10);
     for (;;)
     {
-        int c = getopt_long(argc, argv, "l:e:", long_options, &optidx);
+        int c = getopt_long(argc, argv, "l:e:v", long_options, &optidx);
         if (c == -1) break;
         switch (c)
         {
@@ -232,7 +324,8 @@ int main(int argc, char** argv) {
                             die("invalid image location");
                         }
                         fclose(img);
-                    }
+                    } else
+                        die("failed to open file");
                     break;
                 }
             case 'e':
@@ -243,12 +336,39 @@ int main(int argc, char** argv) {
                     } catch (...) {
                         die("invalid addr");
                     }
+                    break;
+                }
+            case 'v':
+                {
+                    enable_video = true;
+                    break;
                 }
         }
     }
     Verilated::commandArgs(argc, argv);
     soc.reset();
     debug("reset\n");
+
+#ifdef ENABLE_SDL
+    if (enable_video)
+    {
+        ok_or_die(SDL_Init(SDL_INIT_VIDEO), "failed to initialize SDL");
+        window = SDL_CreateWindow("mriscv",
+                SDL_WINDOWPOS_UNDEFINED,
+                SDL_WINDOWPOS_UNDEFINED,
+                win_width, win_height, 0);
+        ok_or_die(window == nullptr, "failed to create SDL window");
+        sdl_renderer = SDL_CreateRenderer(window, -1, 0);
+        ok_or_die(sdl_renderer == nullptr, "failed to create SDL renderer");
+        frame = SDL_CreateTexture(sdl_renderer,
+                SDL_PIXELFORMAT_RGB24,
+                SDL_TEXTUREACCESS_STREAMING,
+                win_width, win_height);
+        ok_or_die(frame == nullptr, "failed to create SDL texture");
+        clock_gettime(CLOCK_MONOTONIC, &prev_time);
+    }
+#endif
+
     while (!Verilated::gotFinish()) {
         soc.next_tick();
         debug("===\n");
@@ -258,5 +378,9 @@ int main(int argc, char** argv) {
             printf("halted the processor at 0x%x\n", halt_addr);
             break;
         }
+#ifdef ENABLE_SDL
+        if (!soc.cpu->clock)
+            try_update_screen(soc.get_framebuffer());
+#endif
     }
 }
