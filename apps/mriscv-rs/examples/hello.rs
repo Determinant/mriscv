@@ -29,6 +29,12 @@ fn soft_handler(_trap_frame: &riscv_rt::TrapFrame) {
     unsafe {mriscv::clear_interrupt();}
 }
 
+#[export_name = "MachineExternal"]
+fn ext_handler(_trap_frame: &riscv_rt::TrapFrame) {
+    uprintln!("external interrupt! clearing...");
+    unsafe {mriscv::clear_ext_interrupt();}
+}
+
 #[entry]
 fn main() -> ! {
     uprintln!("hello, world! Count from 10:");
@@ -45,6 +51,7 @@ fn main() -> ! {
         riscv::register::mstatus::set_mie();
         // enable software interrupt
         riscv::register::mie::set_msoft();
+        riscv::register::mie::set_mext();
         // trigger a software interrupt
         mriscv::set_interrupt();
     }

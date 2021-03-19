@@ -106,7 +106,7 @@ module csr(
     wire [31:0] mret_mstatus = {mstatus[31:8], 1'b0, mstatus[6:4], mstatus[7], mstatus[2:0]};
 
     `define read_csr(raddr, reg_addr, reg) \
-        (raddr == reg_addr) ? {(raddr == waddr ? _``reg : reg), 1'b1}
+        (raddr == reg_addr) ? {((wen && raddr == waddr) ? _``reg : reg), 1'b1}
 
     `define read_csr_with_bypass(raddr) ( \
         `read_csr(raddr, `CSR_MSTATUS, mstatus) : \

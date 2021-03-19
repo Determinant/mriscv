@@ -5,6 +5,7 @@ const UART_TXDATA: *mut u32 = 0x00001000 as *mut u32;
 const MTIME: *mut u32 = 0x00002000 as *mut u32;
 const MTIMECMP: *mut u32 = 0x00002008 as *mut u32;
 const MSIP: *mut u32 = 0x00002010 as *mut u32;
+const EXTI: *mut u32 = 0x00002014 as *mut u32;
 const FRAMEBUFFER: *mut u8 = 0x10000000 as *mut u8;
 const FB_WIDTH: usize = 640;
 const FB_HEIGHT: usize = 480;
@@ -93,6 +94,11 @@ pub unsafe fn set_interrupt() {
 pub unsafe fn clear_interrupt() {
     MSIP.write_volatile(0);
 }
+
+pub unsafe fn clear_ext_interrupt() {
+    EXTI.write_volatile(1);
+}
+
 
 #[macro_export]
 macro_rules! uprint {

@@ -305,8 +305,8 @@ module decoder(
 
     assign csr_raddr = csr;
     wire [31:0] csr_op = (ctrl_forward_csr_valid_exec && csr == ctrl_forward_csr_rd_exec) ? forward_csr_data_exec:
-                          (ctrl_forward_csr_valid_mem && csr == ctrl_forward_csr_rd_mem) ? forward_csr_data_mem:
-                                                                                            csr_rdata;
+                         (ctrl_forward_csr_valid_mem && csr == ctrl_forward_csr_rd_mem) ? forward_csr_data_mem:
+                                                                                          csr_rdata;
     wire [1:0] csr_func = funct3[1:0];
     wire [31:0] csr_tmp = funct3[2] ? {27'b0, rs1} : op1;
 
@@ -334,10 +334,13 @@ module decoder(
                 `define id_print_stat(m, prefix) \
                     $display(\
                         "[%0t] %s[ID ] %s on ",  $time, m, prefix, \
-                        "pc=0x%h exc=%b op1=0x%h op2=0x%h rs1=%0d rs2=%0d fwd=(0x%h,%0d,%b;0x%h,%0d,%b) rd=%0d skip=%b", \
-                        pc, exc, op1, op2, rs1, rs2, \
+                        "pc=0x%h exc=%b op1=0x%h op2=0x%h csr_op=0x%h rs1=%0d rs2=%0d "
+                        pc, exc, op1, op2, csr_op, rs1, rs2, \
+                        "fwd=(0x%h,%0d,%b;0x%h,%0d,%b;0x%h,0x%h,%b;0x%h,0x%h,%b) rd=%0d skip=%b", \
                         forward_data_exec, ctrl_forward_rd_exec, ctrl_forward_valid_exec, \
                         forward_data_mem, ctrl_forward_rd_mem, ctrl_forward_valid_mem,\
+                        forward_csr_data_exec, ctrl_forward_csr_rd_exec, ctrl_forward_csr_valid_exec, \
+                        forward_csr_data_mem, ctrl_forward_csr_rd_mem, ctrl_forward_csr_valid_mem, \
                         inst, rd, ctrl_skip_next_reg)
             `endif
 
