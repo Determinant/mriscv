@@ -6,6 +6,7 @@ const MTIME: *mut u32 = 0x00002000 as *mut u32;
 const MTIMECMP: *mut u32 = 0x00002008 as *mut u32;
 const MSIP: *mut u32 = 0x00002010 as *mut u32;
 const EXTI: *mut u32 = 0x00002014 as *mut u32;
+const INPUT: *mut u32 = 0x0003000 as *mut u32;
 const FRAMEBUFFER: *mut u8 = 0x10000000 as *mut u8;
 const FB_WIDTH: usize = 640;
 const FB_HEIGHT: usize = 480;
@@ -87,11 +88,11 @@ pub fn get_framebuffer() -> &'static mut [u8] {
     }
 }
 
-pub unsafe fn set_interrupt() {
+pub unsafe fn set_sw_interrupt() {
     MSIP.write_volatile(1);
 }
 
-pub unsafe fn clear_interrupt() {
+pub unsafe fn clear_sw_interrupt() {
     MSIP.write_volatile(0);
 }
 
@@ -99,6 +100,11 @@ pub unsafe fn clear_ext_interrupt() {
     EXTI.write_volatile(1);
 }
 
+pub fn get_input_key() -> u32 {
+    unsafe {
+        INPUT.read_volatile()
+    }
+}
 
 #[macro_export]
 macro_rules! uprint {

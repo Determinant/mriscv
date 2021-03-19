@@ -9,10 +9,7 @@ use riscv_rt::entry;
 
 #[export_name = "ExceptionHandler"]
 fn my_exception_handler(_trap_frame: &riscv_rt::TrapFrame) {
-    uprintln!(
-        "got exception: {}",
-        riscv::register::mcause::read().code()
-    );
+    uprintln!("got exception: {}", riscv::register::mcause::read().code());
 }
 
 const INTERVAL: u32 = 0x200000;
@@ -26,13 +23,27 @@ fn timer_handler(_trap_frame: &riscv_rt::TrapFrame) {
 #[export_name = "MachineSoft"]
 fn soft_handler(_trap_frame: &riscv_rt::TrapFrame) {
     uprintln!("software interrupt! clearing...");
-    unsafe {mriscv::clear_interrupt();}
+    unsafe {
+        mriscv::clear_sw_interrupt();
+    }
 }
 
 #[export_name = "MachineExternal"]
 fn ext_handler(_trap_frame: &riscv_rt::TrapFrame) {
     uprintln!("external interrupt! clearing...");
-    unsafe {mriscv::clear_ext_interrupt();}
+    let code = mriscv::get_input_key() as u16;
+    uprintln!(
+        "key 0x{:02x} is {}",
+        code as u8,
+        if (code >> 8) == 0 {
+            "released"
+        } else {
+            "pressed"
+        }
+    );
+    unsafe {
+        mriscv::clear_ext_interrupt();
+    }
 }
 
 #[entry]
@@ -53,7 +64,7 @@ fn main() -> ! {
         riscv::register::mie::set_msoft();
         riscv::register::mie::set_mext();
         // trigger a software interrupt
-        mriscv::set_interrupt();
+        mriscv::set_sw_interrupt();
     }
     mriscv::set_timer(INTERVAL);
     uprintln!("timer set");

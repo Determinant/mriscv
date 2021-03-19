@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include <exception>
+#include <queue>
 #include <cstdlib>
 #include <cassert>
 #include <csignal>
@@ -20,13 +21,15 @@
 #endif
 
 uint64_t main_time = 0;
-uint32_t halt_addr = 0x00000000; //0x0010001c;
+uint32_t halt_addr = 0x00000000;
 
 const uint32_t uart_txdata_addr = 0x00001000;
+const uint32_t input_addr = 0x00003000;
 const uint32_t framebuffer_addr = 0x10000000;
 
 const uint32_t win_width = 640;
 const uint32_t win_height = 480;
+const size_t max_key_events = 4096;
 
 #ifdef ENABLE_SDL
 SDL_Window *window = nullptr;
@@ -37,6 +40,7 @@ uint8_t frame_tmp[3 * win_width * win_height];
 uint32_t cycles_per_frame = 100000;
 struct timespec prev_time;
 const double fps = 60;
+std::queue<uint16_t> key_events;
 #endif
 
 double sc_time_stamp() {
@@ -196,6 +200,10 @@ class SimulatedRAM {
     uint8_t *get_framebuffer() {
         return &framebuffer[0];
     }
+
+    uint8_t *get_ram() {
+        return &memory[0];
+    }
 };
 
 struct SoC {
@@ -236,6 +244,10 @@ struct SoC {
     uint8_t *get_framebuffer() {
         return ram.get_framebuffer();
     }
+
+    void set_key(uint16_t key) {
+        *(uint16_t *)(ram.get_ram() + input_addr) = key;
+    }
 };
 
 static struct option long_options[] = {
@@ -266,9 +278,21 @@ void signal_handler(int) {
 }
 
 #ifdef ENABLE_SDL
-void try_update_screen(uint8_t *fb) {
+void try_update_frame(uint8_t *fb) {
     if (window == nullptr || (++frame_cnt < cycles_per_frame))
         return;
+    SDL_Event event;
+    while (key_events.size() < max_key_events && SDL_PollEvent(&event))
+    {
+        if (event.type == SDL_KEYDOWN && event.key.repeat == 0)
+        {
+            if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+                signal_handler(0);
+            key_events.push((1 << 8) | event.key.keysym.scancode);
+        }
+        else if (event.type == SDL_KEYUP && event.key.repeat == 0)
+            key_events.push(event.key.keysym.scancode);
+    }
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     double millisec = now.tv_nsec < prev_time.tv_nsec ?
@@ -380,7 +404,20 @@ int main(int argc, char** argv) {
         }
 #ifdef ENABLE_SDL
         if (!soc.cpu->clock)
-            try_update_screen(soc.get_framebuffer());
+        {
+            if (soc.cpu->irq)
+                soc.cpu->irq = false;
+            try_update_frame(soc.get_framebuffer());
+        }
+        else
+        {
+            if (key_events.size())
+            {
+                soc.set_key(key_events.front());
+                key_events.pop();
+                soc.cpu->irq = true;
+            }
+        }
 #endif
     }
 }
