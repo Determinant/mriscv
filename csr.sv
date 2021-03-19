@@ -44,8 +44,7 @@ module csr(
     input ctrl_mret,
     output ctrl_mie, // whether interrupts are globally enabled
     output [2:0] ctrl_mxie,
-    output ctrl_addr_valid,
-    output ctrl_mcause_is_irq
+    output ctrl_addr_valid
 );
     // misa: RV32I
     logic [31:0] misa;
@@ -81,7 +80,6 @@ module csr(
     logic [31:0] mepc;
     logic [31:0] mcause;
     logic [31:0] mtval;
-    assign ctrl_mcause_is_irq = mcause[31];
 
     localparam [31:0] mhartid = 0; // Hart ID is always 0
     localparam _mhartid = mhartid;

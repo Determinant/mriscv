@@ -2,6 +2,7 @@
 module cpu(
     input clock,
     input reset,
+    input irq,
     output [31:0] _debug_pc,
 
     output [31:0] icache_addr,
@@ -20,6 +21,7 @@ module cpu(
     core _core (
         clock,
         reset,
+        irq,
         _debug_pc,
         icache_addr,
         icache_req,

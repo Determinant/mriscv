@@ -4,6 +4,7 @@
 const UART_TXDATA: *mut u32 = 0x00001000 as *mut u32;
 const MTIME: *mut u32 = 0x00002000 as *mut u32;
 const MTIMECMP: *mut u32 = 0x00002008 as *mut u32;
+const MSIP: *mut u32 = 0x00002010 as *mut u32;
 const FRAMEBUFFER: *mut u8 = 0x10000000 as *mut u8;
 const FB_WIDTH: usize = 640;
 const FB_HEIGHT: usize = 480;
@@ -85,19 +86,27 @@ pub fn get_framebuffer() -> &'static mut [u8] {
     }
 }
 
+pub unsafe fn set_interrupt() {
+    MSIP.write_volatile(1);
+}
+
+pub unsafe fn clear_interrupt() {
+    MSIP.write_volatile(0);
+}
+
 #[macro_export]
 macro_rules! uprint {
-    ($serial:expr, $($arg:tt)*) => {
-        $serial.write_fmt(format_args!($($arg)*)).ok()
+    ($($arg:tt)*) => {
+        mriscv::Serial.write_fmt(format_args!($($arg)*)).ok()
     };
 }
 
 #[macro_export]
 macro_rules! uprintln {
-    ($serial:expr, $fmt:expr) => {
-        uprint!($serial, concat!($fmt, "\n"))
+    ($fmt:expr) => {
+        uprint!(concat!($fmt, "\n"))
     };
-    ($serial:expr, $fmt:expr, $($arg:tt)*) => {
-        uprint!($serial, concat!($fmt, "\n"), $($arg)*)
+    ($fmt:expr, $($arg:tt)*) => {
+        uprint!(concat!($fmt, "\n"), $($arg)*)
     };
 }
