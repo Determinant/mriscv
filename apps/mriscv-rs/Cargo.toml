@@ -3,19 +3,19 @@ name = "mriscv"
 version = "0.0.0"
 authors = ["Determinant <tederminant@gmail.com>"]
 edition = "2018"
-license = "ISC"
+license = "MIT"
 readme = "README.md"
 
 [dependencies]
 panic-halt = "0.2.0"
 riscv = "0.6.0"
 riscv-rt = "0.8.0"
-runes = "0.2.5"
 
-[dependencies.rand]
+[dev-dependencies.rand]
 version = "0.8.3"
 default-features = false
 features = ["small_rng"]
+
 
 [profile.release]
 codegen-units = 1 # better optimizations

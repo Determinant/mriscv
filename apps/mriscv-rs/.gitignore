@@ -2,5 +2,6 @@ target/
 .gdb_history
 Cargo.lock
 core
-*.elf
-*.bin
+/*.elf
+/*.bin
+/*.txt
