@@ -11,24 +11,24 @@ endif
 all: sim sim_debug apps
 
 clean:
-	rm -rf cpu_cc cpu_cc_debug
+	rm -rf core_cc core_cc_debug
 	rm -f sim sim_debug
 
-cpu_cc: cpu.sv core.sv csr.sv
-	verilator cpu.sv --Mdir $@ --cc -Wall -Wno-style
-cpu_cc/Vcpu__ALL.a: cpu_cc cpu_cc/Vcpu.cpp
-	make -C cpu_cc -f Vcpu.mk
+core_cc: core.sv core.sv csr.sv
+	verilator core.sv --Mdir $@ --cc -Wall -Wno-style
+core_cc/Vcore__ALL.a: core_cc core_cc/Vcore.cpp
+	make -C core_cc -f Vcore.mk
 
-cpu_cc_debug: cpu.sv core.sv csr.sv
-	verilator cpu.sv --Mdir $@ --cc -Wall -Wno-style +define+DEBUG
-cpu_cc_debug/Vcpu__ALL.a: cpu_cc_debug cpu_cc/Vcpu.cpp
-	make -C cpu_cc_debug -f Vcpu.mk
+core_cc_debug: core.sv core.sv csr.sv
+	verilator core.sv --Mdir $@ --cc -Wall -Wno-style +define+DEBUG
+core_cc_debug/Vcore__ALL.a: core_cc_debug core_cc/Vcore.cpp
+	make -C core_cc_debug -f Vcore.mk
 
-sim: sim.cpp cpu_cc/Vcpu__ALL.a
-	$(CXX) -o $@ $< -I cpu_cc -I $(verilator_base)/include/ cpu_cc/Vcpu__ALL.a $(verilator_base)/include/verilated.cpp -g -O2 $(LD_FLAGS) $(CXX_FLAGS)
+sim: sim.cpp core_cc/Vcore__ALL.a
+	$(CXX) -o $@ $< -I core_cc -I $(verilator_base)/include/ core_cc/Vcore__ALL.a $(verilator_base)/include/verilated.cpp -g -O2 $(LD_FLAGS) $(CXX_FLAGS)
 
-sim_debug: sim.cpp cpu_cc_debug/Vcpu__ALL.a
-	$(CXX) -o $@ $< -I cpu_cc_debug -I $(verilator_base)/include/ cpu_cc_debug/Vcpu__ALL.a $(verilator_base)/include/verilated.cpp -g -O2 -DDEBUG $(LD_FLAGS) $(CXX_FLAGS)
+sim_debug: sim.cpp core_cc_debug/Vcore__ALL.a
+	$(CXX) -o $@ $< -I core_cc_debug -I $(verilator_base)/include/ core_cc_debug/Vcore__ALL.a $(verilator_base)/include/verilated.cpp -g -O2 -DDEBUG $(LD_FLAGS) $(CXX_FLAGS)
 
 apps:
 	$(MAKE) -C apps

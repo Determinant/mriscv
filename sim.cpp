@@ -8,7 +8,7 @@
 #include <csignal>
 #include <getopt.h>
 #include "verilated.h"
-#include "Vcpu.h"
+#include "Vcore.h"
 
 #ifdef ENABLE_SDL
 #include <SDL2/SDL.h>
@@ -48,7 +48,7 @@ double sc_time_stamp() {
 }
 
 class SimulatedRAM {
-    std::shared_ptr<Vcpu> cpu;
+    std::shared_ptr<Vcore> core;
     std::vector<uint8_t> memory;
     std::vector<uint8_t> framebuffer;
     size_t capacity;
@@ -58,14 +58,14 @@ class SimulatedRAM {
     int dcache_state; // 0 -> reset; 1 -> reading/writing
 
     public:
-    SimulatedRAM(std::shared_ptr<Vcpu> cpu, size_t capacity, size_t fb_capacity): \
-            cpu(cpu), capacity(capacity),
+    SimulatedRAM(std::shared_ptr<Vcore> core, size_t capacity, size_t fb_capacity): \
+            core(core), capacity(capacity),
             icache_next_rdy(0),
             dcache_next_rdy(0) {
         memory.resize(capacity);
         framebuffer.resize(fb_capacity);
-        cpu->icache_rdy = 0;
-        cpu->dcache_rdy = 0;
+        core->icache_rdy = 0;
+        core->dcache_rdy = 0;
     }
 
     void load_image_from_file(FILE *img_file, size_t mem_off, size_t len = 0) {
@@ -80,62 +80,62 @@ class SimulatedRAM {
     }
 
     void eval_posedge() {
-        if (cpu->reset == 1)
+        if (core->reset == 1)
         {
             debug("reset ram\n");
             icache_state = 0;
             dcache_state = 0;
-            cpu->icache_rdy = 0;
-            cpu->dcache_rdy = 0;
+            core->icache_rdy = 0;
+            core->dcache_rdy = 0;
             return;
         }
         if (icache_state == 0)
         {
-            cpu->icache_rdy = 0;
-            if (cpu->icache_req)
+            core->icache_rdy = 0;
+            if (core->icache_req)
                 icache_state = 1;
         }
         if (icache_state == 1)
         {
             if (icache_next_rdy == 0)
             {
-                assert(cpu->icache_addr + 4 < capacity);
-                cpu->icache_data = \
-                    memory[cpu->icache_addr] |
-                    (memory[cpu->icache_addr + 1] << 8) |
-                    (memory[cpu->icache_addr + 2] << 16) |
-                    (memory[cpu->icache_addr + 3] << 24);
-                cpu->icache_rdy = 1;
+                assert(core->icache_addr + 4 < capacity);
+                core->icache_data = \
+                    memory[core->icache_addr] |
+                    (memory[core->icache_addr + 1] << 8) |
+                    (memory[core->icache_addr + 2] << 16) |
+                    (memory[core->icache_addr + 3] << 24);
+                core->icache_rdy = 1;
                 icache_state = 0;
                 debug("icache: read byte @ %08x = %08x\n",
-                      cpu->icache_addr, cpu->icache_data);
+                      core->icache_addr, core->icache_data);
                 //schedule_next_icache_rdy(4);
             } else icache_next_rdy--;
         }
 
         if (dcache_state == 0)
         {
-            cpu->dcache_rdy = 0;
-            if (cpu->dcache_req)
+            core->dcache_rdy = 0;
+            if (core->dcache_req)
                 dcache_state = 1;
         }
         if (dcache_state == 1)
         {
             if (dcache_next_rdy == 0)
             {
-                auto addr = cpu->dcache_addr;
-                auto data = cpu->dcache_wdata;
+                auto addr = core->dcache_addr;
+                auto data = core->dcache_wdata;
                 if (addr == uart_txdata_addr)
                 {
-                    if (cpu->dcache_wr)
+                    if (core->dcache_wr)
                     {
                         debug("dcache: write uart = %02x\n", addr, data);
                         putchar((uint8_t)data);
                     }
                     else
                     {
-                        cpu->dcache_rdata = 0;
-                        debug("dcache: read uart = %02x\n", cpu->dcache_rdata);
+                        core->dcache_rdata = 0;
+                        debug("dcache: read uart = %02x\n", core->dcache_rdata);
                     }
                 }
                 else
@@ -150,20 +150,20 @@ class SimulatedRAM {
                     else
                         assert(addr + 4 < capacity);
 
-                    if (cpu->dcache_wr)
+                    if (core->dcache_wr)
                     {
-                        if (cpu->dcache_ws == 0)
+                        if (core->dcache_ws == 0)
                         {
                             debug("dcache: write byte @ %08x = %02x\n", addr, data);
                             m[addr] = data & 0xff;
                         }
-                        else if (cpu->dcache_ws == 1)
+                        else if (core->dcache_ws == 1)
                         {
                             debug("dcache: write halfword @ %08x = %04x\n", addr, data);
                             m[addr] = data & 0xff;
                             m[addr + 1] = (data >> 8) & 0xff;
                         }
-                        else if (cpu->dcache_ws == 2)
+                        else if (core->dcache_ws == 2)
                         {
                             debug("dcache: write word @ %08x = %08x\n", addr, data);
                             m[addr] = data & 0xff;
@@ -175,11 +175,11 @@ class SimulatedRAM {
                     }
                     else
                     {
-                        cpu->dcache_rdata = *(uint32_t *)(m + addr);
-                        debug("dcache: read word @ %08x = %08x\n", addr, cpu->dcache_rdata);
+                        core->dcache_rdata = *(uint32_t *)(m + addr);
+                        debug("dcache: read word @ %08x = %08x\n", addr, core->dcache_rdata);
                     }
                 }
-                cpu->dcache_rdy = 1;
+                core->dcache_rdy = 1;
                 dcache_state = 0;
                 //schedule_next_dcache_rdy(1);
             } else {
@@ -207,38 +207,38 @@ class SimulatedRAM {
 };
 
 struct SoC {
-    std::shared_ptr<Vcpu> cpu;
+    std::shared_ptr<Vcore> core;
     SimulatedRAM ram;
 
-    SoC(std::shared_ptr<Vcpu> cpu, size_t mem_cap, size_t fb_cap): cpu(cpu), ram(cpu, mem_cap, fb_cap) {}
+    SoC(std::shared_ptr<Vcore> core, size_t mem_cap, size_t fb_cap): core(core), ram(core, mem_cap, fb_cap) {}
 
     void reset() {
-        cpu->clock = 0;
-        cpu->reset = 1;
+        core->clock = 0;
+        core->reset = 1;
         tick();
 
-        cpu->clock = 1;
+        core->clock = 1;
         tick();
 
-        cpu->reset = 0;
+        core->reset = 0;
     }
 
     void tick() {
-        if (!cpu->clock)
+        if (!core->clock)
         {
             main_time++;
             ram.eval_posedge();
         }
-        cpu->eval();
+        core->eval();
     }
 
     void next_tick() {
-        cpu->clock = !cpu->clock;
+        core->clock = !core->clock;
         tick();
     }
 
     void halt() {
-        cpu->final();               // Done simulating
+        core->final();               // Done simulating
     }
 
     uint8_t *get_framebuffer() {
@@ -324,7 +324,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     bool enable_video = false;
     int optidx = 0;
-    auto soc = SoC(std::make_shared<Vcpu>(), 40 << 20, 320 << 10);
+    auto soc = SoC(std::make_shared<Vcore>(), 40 << 20, 320 << 10);
     for (;;)
     {
         int c = getopt_long(argc, argv, "l:e:v", long_options, &optidx);
@@ -396,17 +396,17 @@ int main(int argc, char** argv) {
     while (!Verilated::gotFinish()) {
         soc.next_tick();
         debug("===\n");
-        if (soc.cpu->_debug_pc == halt_addr)
+        if (soc.core->_debug_pc == halt_addr)
         {
             soc.halt();
             printf("halted the processor at 0x%x\n", halt_addr);
             break;
         }
 #ifdef ENABLE_SDL
-        if (!soc.cpu->clock)
+        if (!soc.core->clock)
         {
-            if (soc.cpu->irq)
-                soc.cpu->irq = false;
+            if (soc.core->irq)
+                soc.core->irq = false;
             try_update_frame(soc.get_framebuffer());
         }
         else
@@ -415,7 +415,7 @@ int main(int argc, char** argv) {
             {
                 soc.set_key(key_events.front());
                 key_events.pop();
-                soc.cpu->irq = true;
+                soc.core->irq = true;
             }
         }
 #endif
