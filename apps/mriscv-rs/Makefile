@@ -7,6 +7,7 @@ OBJCOPY = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objcopy
 OBJS :=	\
 	hello.txt hello.bin hello.elf \
 	video.txt video.bin video.elf \
+	snake.txt snake.bin snake.elf \
 
 all: $(OBJS)
 

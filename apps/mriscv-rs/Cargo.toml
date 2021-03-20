@@ -10,6 +10,7 @@ readme = "README.md"
 panic-halt = "0.2.0"
 riscv = "0.6.0"
 riscv-rt = "0.8.0"
+heapless = "0.6.1"
 
 [dev-dependencies.rand]
 version = "0.8.3"

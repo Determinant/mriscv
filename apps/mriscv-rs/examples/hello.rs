@@ -17,7 +17,9 @@ const INTERVAL: u32 = 0x200000;
 #[export_name = "MachineTimer"]
 fn timer_handler(_trap_frame: &riscv_rt::TrapFrame) {
     uprintln!("timer goes off! resetting...");
-    mriscv::set_timer(INTERVAL);
+    unsafe {
+        mriscv::set_timer(INTERVAL);
+    }
 }
 
 #[export_name = "MachineSoft"]
@@ -65,12 +67,9 @@ fn main() -> ! {
         riscv::register::mie::set_mext();
         // trigger a software interrupt
         mriscv::set_sw_interrupt();
+        // schedule a timer interrupt
+        mriscv::set_timer(INTERVAL);
     }
-    mriscv::set_timer(INTERVAL);
     uprintln!("timer set");
-    loop {
-        unsafe {
-            riscv::asm::wfi();
-        }
-    }
+    mriscv::wfi_loop();
 }
