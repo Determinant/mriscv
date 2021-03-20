@@ -225,11 +225,15 @@ fn main() -> ! {
     let mut rng = rand::rngs::SmallRng::from_seed([0; 16]);
     let mut state = SnakeState::new(10, 5, &mut rng);
     render(&state);
+    let check_game = |ret: bool| {
+        if !ret {
+            // TODO: fancier display in video
+            uprintln!("Gameover!");
+        }
+    };
     mriscv::event::Events::dispatch(|e| match e {
         mriscv::event::Event::Timer => {
-            if !state.tick(&mut rng) {
-                uprintln!("gameover");
-            }
+            check_game(state.tick(&mut rng));
             render(&state);
             unsafe { mriscv::set_timer(INTERVAL) }
         }
@@ -245,9 +249,7 @@ fn main() -> ! {
                 _ => return,
             };
             state.set_dir(&dir);
-            if !state.tick(&mut rng) {
-                uprintln!("gameover");
-            }
+            check_game(state.tick(&mut rng));
             render(&state);
         }
         _ => (),
