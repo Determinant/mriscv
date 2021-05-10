@@ -2,8 +2,8 @@ Minimum RISC-V System From Scratch
 ==================================
 
 
-Making a RISC-V core
-++++++++++++++++++++
+Make a RISC-V processor
++++++++++++++++++++++++
 
 What Makes a Processor?
 -----------------------
