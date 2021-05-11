@@ -178,7 +178,8 @@ driven by the clock signal.
 
       // combinational logic, a 2-input mux.
       wire comb_result = rst ? d : (q + 1);
-      // sequential logic, to alter the state ("reg" for the register, wired to `q`)
+      // sequential logic, to alter the state ("reg" for the
+      // register, wired to `q`)
       always_ff @ (posedge clk) begin
           q <= comb_result;
       end
