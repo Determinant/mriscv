@@ -98,7 +98,7 @@ Tutorial
 If you're interested in buliding a RISC-V system like this from scratch,
 checkout here_.
 
-.. _here: https://determinant.github.io/mriscv/index.html
+.. _here: https://determinant.github.io/mriscv/
 
 Memory Map
 ----------
