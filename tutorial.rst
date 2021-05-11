@@ -110,8 +110,65 @@ repeatedly applying two kinds of "logic":
   could be later altered or read out. (Like a "sequencer/synthesizer", if you're familiar
   with electronic music.)
 
-One gives us some math calculation, while the other one introduces the notion
-of states.
+One gives us some math calculation, called *combinational logic*, while the
+other one introduces the notion of states, called *sequential logic*.
+
+Indeed, in digital circuit design, there is a very widely used abstraction that
+is based on this observation. Register Transfer Level (RTL) is used by languages
+like Verilog and VHDL to create a high-level schematics of logic circuits. It
+describes the logical behavior with these two kinds of logic as primitives, without having
+to dive too much into the low-level (gate-level) implementation of them.
+Each kind of logic usually has patterns and disciplines for its implementation
+and can be automatically synthesized by specialized tools or hand-crafted if
+necessary, while the RTL language can abstract this away so people can
+tackle with it separately.
+
+Combinational logics are usually implemented directly with
+the wiring of a cascade of basic logic gates (e.g. NAND/NOR gates). For a concrete
+example, a 2-input *multiplexer* (or simply "mux") can be implemented as in the diagram:
+
+.. image:: https://www.electronics-tutorials.ws/wp-content/uploads/2018/05/combination-multiplexer2.gif
+
+The mux choses between inputs (I\ :sub:`0` vs. I\ :sub:`1`) for the output determined
+by the control signal A. The value of I\ :sub:`0` will only be chosen when A = 1.
+
+There is one thing that's worth noting: the "calculation" here happens
+"instantaneously" as the underlying logic gates "maintain" their outputs from
+their inputs by physics (the use of semi-conductors). There is, however, still some
+time delay due to physical properties of the gates and the time for electrons
+to propagate on the wire or within the semi-conductors, at the scale of
+nano-seconds. Thus, the delay is largely affected by the depth of the wiring of
+gates and complexity of the overall construction.
+
+Sequential logics, however, are very different. Here we only discuss about
+*synchronous* sequential logic. As the main building block, a *flip-flop* not
+only takes input as in combinational logic, but also requires a *clock* signal
+that drives it. In sequential logic, outputs are only stabilized and deemed as
+valid as the clock signal pulses (going to 0 to 1, or 1 to 0). The use of an
+additional clock signal effectively introduces the notion of time into the
+logic (unlike combinational logic, which is time-independent). The notion of
+discrete time also makes the changing state easy to reason about and
+manipulate.  Interestingly, such seemingly "magical" basic components can be
+still implemented by pure wiring of gates, to be stateful. The extra clock (or
+reset signal, for its asynchronous counterpart, "latches") signal is the key
+ingredient that does the trick. The schematics below shows a wiring diagram for
+"D-type" flip-flop with NAND gates, which is a commonly chosen component in
+synthesizing sequential logic. In this flip-flop, the output (Q) will retain
+the "memorized" value, when the clock signal (Clk) is 0, and set/reset to the
+input (D) when the clock is 1.
+
+.. image:: https://www.electronics-tutorials.ws/wp-content/uploads/2018/05/sequential-seq6.gif
+
+Finally, consider the case where we combine both kinds of logic together: we
+wire the input of a combinational logic from the output of a D-type flip-flop,
+and then wire the combinational output to the flip-flop input. It creates a
+"loop" which takes the output from the current state and puts the new value to
+the next state after calculation, implementing an iterator whose iterations are
+driven by the clock signal. Of course, the period of the clock signal (more
+precisely, the minimum gap between two clock cycles) should be conservatively
+chosen to be larger than the circuit time of the combinational logic, so the
+input to the flip-flop is stabilized before the next clock ticks. This also reveals
+why processors nowadays are "pipelined", the topic of the next section.
 
 
 Instruction Pipelining
