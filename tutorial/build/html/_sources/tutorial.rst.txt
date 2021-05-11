@@ -127,7 +127,7 @@ Combinational logics are usually implemented directly with
 the wiring of a cascade of basic logic gates (e.g. NAND/NOR gates). For a concrete
 example, a 2-input *multiplexer* (or simply "mux") can be implemented as in the diagram:
 
-.. image:: https://www.electronics-tutorials.ws/wp-content/uploads/2018/05/combination-multiplexer2.gif
+.. image:: mux.svg
 
 The mux choses between inputs (I\ :sub:`0` vs. I\ :sub:`1`) for the output determined
 by the control signal A. The value of I\ :sub:`0` will only be chosen when A = 1.
