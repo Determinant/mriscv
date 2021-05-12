@@ -864,8 +864,18 @@ module core (
 
     // i-cache communication
     output [31:0] icache_addr,
+    // request flag, having the level of 1 will trigger a request
+    // of 4-byte data at the address given by `icache_addr` when
+    // the i-cache is in `idle` state, and it should enter a `pending`
+    // state which ignores the inputs from the processor and prepare
+    // the data in `icache_data`
     output icache_req,
     input [31:0] icache_data,
+    // ready flag, should be set to 1 when the i-cache is in
+    // `pending` state and has stabilized the valid value in
+    // `icache_data`. In the same cycle of setting the ready flag,
+    // it should go back to the `idle` state. When the i-cache is
+    // in `idle` state during a cycle, it sets `icache_rdy` to 0.
     input icache_rdy,
 
     // d-cache communication

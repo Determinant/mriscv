@@ -398,7 +398,7 @@ this project, is to calculate whether there is transfer of the control flow:
 
 The shown combinational logics implements the control signal that determines
 whether the processor should move its program counter to a different location
-other than the next instruction (``PC`` + 4).  ``ctrl_jump`` signals 1 if the
+other than the next instruction (PC + 4).  ``ctrl_jump`` signals 1 if the
 processor needs to "jump" to other places, which could be caused by branching
 (e.g. ``BNE``), or function calls (e.g. ``JAL``). These control signals will
 connect to the logic that fetches the instruction and advances the PC. We'll
@@ -445,18 +445,203 @@ the subsequent stage:
 
 Executor: All About "Computing"
 -------------------------------
+The executor mostly consists of an ALU (and a multiplier/divider if RISC-V "M"
+extension needs to be supported). As a simple implementation, here we just use
+a multi-way mux to select the calculation by
+``ctrl_alu_func`` from last decoder stage, for the given operands:
+
+.. code-block:: verilog
+
+  // ...
+  wire [31:0] res = ctrl_alu_func == `FADD ? (ctrl_alu_sign_ext ? op1 - op2 : op1 + op2) :
+             ctrl_alu_func == `FSLT ? ($signed(op1) < $signed(op2) ? 1 : 0) :
+             ctrl_alu_func == `FSLTU ? (op1 < op2 ? 1 : 0) :
+             ctrl_alu_func == `FXOR ? (op1 ^ op2) :
+             ctrl_alu_func == `FOR ? (op1 | op2) :
+             ctrl_alu_func == `FAND ? (op1 & op2) :
+             ctrl_alu_func == `FSLL ? (op1 << op2[4:0]) :
+             ctrl_alu_func == `FSRX ? (ctrl_alu_sign_ext ? $signed(op1) >> op2[4:0] : op1 >> op2[4:0]) : 'bx;
+  // ...
+
+For the purpose of this project, we can just use the built-in arithmetic and
+logic operations provided by SystemVerilog, which can be reasonably synthesized
+for practical use, to support the base instruction set ("I").  For "M" extension, some
+hand-crafted RTL implementation of the multiplier may be desirable, and one can
+optimize the different paths of the mux to reduce the latency in the overall
+circuitry, which isn't the focus of this project. Readers who are interested
+in this part can try to plug in their own implementations to this module for these
+calculations easily.
+
+Finally, as in any other stages, the execution result is stored to a stage
+register and some other registers that skip this stage are passed on, by the
+end of each cycle:
+
+.. code-block:: verilog
+
+  // ...
+              res_reg <= res;
+              rd_reg <= rd;
+  // ...
+              tmp_reg <= tmp;
+              pc_reg <= pc;
+              exc_reg <= exc;
+              ctrl_wb_reg <= ctrl_wb;
+  // ...
+              ctrl_mem_reg <= ctrl_mem;
+  // ...
 
 
 Fetcher: Automation and Loop
 ----------------------------
+So far we know how to decode and execute the instructions, but the processor
+still does not automate its work cycles. Like a machine gun, it needs to
+automatically feeds in the next instruction to be decoded when last instruction
+gets through the decoder, so another round of decoding can happen
+when the execution stage continues to work on the decoded instruction. In our code,
+a fetching phase, implemented by the ``fetcher`` module serves as the portal
+to the processor pipeline and fetches the correct instruction from the *instruction cache* ("i-cache").
+We deliberately abstract away the hierarchy of cache and memory in ``mrisv``, as a modern
+processor usually only directly talks to its L1-cache, whose minimal interface is captured
+by our core implementation:
 
+.. code-block:: verilog
+
+  // ...
+  // i-cache communication
+  output [31:0] icache_addr,
+  // request flag, having the level of 1 will trigger a request
+  // of 4-byte data at the address given by `icache_addr` when
+  // the i-cache is in `idle` state, and it should enter a `pending`
+  // state which ignores the inputs from the processor and prepare
+  // the data in `icache_data`
+  output icache_req,
+  input [31:0] icache_data,
+  // ready flag, should be set to 1 when the i-cache is in
+  // `pending` state and has stabilized the valid value in
+  // `icache_data`. In the same cycle of setting the ready flag,
+  // it should go back to the `idle` state. When the i-cache is
+  // in `idle` state during a cycle, it sets `icache_rdy` to 0.
+  input icache_rdy,
+  // ...
+
+Here, ``icache_addr`` indicates the physical address of the in-memory word (32-bit
+integer) the processor wants to fetch next, ``icache_req`` flag is maintain at
+1 (level-triggered) if a read is requested. When the request flag is 1 and the
+i-cache is in ``idle``, it first sets ``icache_rdy`` flag to 0 and enter the
+``pending`` state for the next cycle.  When the word data is stable and ready
+in ``icache_data`` wires, i-cache sets ``icache_rdy`` to 1 and goes back to
+``idle`` state. Thus, it takes at least 1 cycle and
+may take *more* cycles for the fetching to finish, and our processor
+accounts for this correctly. The diagram below shows four continuous reads that
+take 1 cycle, followed by a single read that takes 3 cycles:
+
+.. image:: i-cache.svg
+   :align: center
+   :width: 100%
+
+To make the entire SoC design runs on
+FPGA, readers need to plug in their own cache implementation and memory
+controller interface (e.g. some DDR IP core generated by commercial tools such as
+Xilinx Vivado) as the i-cache, according to this simple interface. While this
+allows flexibility in interesting use cases, in this repo, we just emulate
+cache and memory all together with a few lines of code in ``sim.cpp`` to
+demonstrate the usage and keep our code base minimal and clean.
+
+To set the PC correctly, ``fetcher`` uses a mux to account for three cases:
+
+- normal advances of PC: PC + 4 (as each instruction is 4-byte word in RV32I);
+- control flow transfers by some previous instruction: ``ctrl_jump`` and ``pc_jump_target`` inputs;
+- trap (for processor exceptions or interrupts) handling: ``ctrl_trap`` and ``pc_exc_target``.
+
+.. code-block:: verilog
+
+  // ...
+  wire [31:0] next_pc = ctrl_jump ? pc_jump_target : (pc + 4);
+  // ...
+          pc <= ctrl_trap ? pc_exc_target : next_pc;
+          inst_reg <= icache_data;
+          pc_reg <= pc;
+  // ...
 
 Memory Access & Writeback
 -------------------------
 
+Like single-cycle processors, a pipelined design also needs to finalize the
+state change at the end of an instruction. There are two kinds of state changes:
 
-Resolving Inter-Stage Dependency
---------------------------------
+- internal: the change of general/special registers specified by the ISA
+- external: the change made to main memory locations, usually byte/half word/word-addressed
+
+For RISC-V, the external state change can only be done via memory store
+instructions. Like instruction cache, there is a dedicated processor cache,
+*data cache* ("d-cache") that is used for caching data accessed by the memory loads/stores.
+
+This style of distinguishing storage of instruction from data is usually called
+*Havard architecture*, whereas *von Neumann architecture* treats instructions
+and data the same way ("programs are also data"). For modern computer systems,
+however, the model is more like a hybrid version of both kinds: most
+micro-architectures have separate i-cache and d-cache for better performance
+due to the different access pattern for each kind, while programs they support
+do not have such distinction (both instructions and data are stored in the unified memory space).
+
+Our d-cache interface is very similar to the i-cache:
+
+.. code-block:: verilog
+
+  // ...
+  output [31:0] dcache_addr,
+  output [31:0] dcache_wdata,
+  output [1:0] dcache_ws,
+  output dcache_req,
+  output dcache_wr,
+  input [31:0] dcache_rdata,
+  input dcache_rdy,
+  // ...
+
+It has the following differences:
+
+- unlike the read-only i-cache, d-cache can be in either read or write state,
+  so ``dcache_wr`` is used as the flag and ``dcache_wdata`` is used as the
+  value for writes;
+
+- all instructions are of the same length, but RV32I allows manipulating data
+  with different byte-widths (bytes: 1, half-words: 2, words: 4), so
+  ``dcache_ws`` is used to indicate the width: 0 for bytes, 1 for half-words
+  and 2 for words.
+
+The operational logic for d-cache is similar to i-cache. It is also a
+request-based protocol and the data are placed in the lower bits for sizes
+smaller than a word.
+
+The resulting value after the memory stage is either the passed-on value from execution stage,
+or the value loaded from the memory:
+
+.. code-block:: verilog
+
+  // ...
+  wire [31:0] res_mem =
+      dcache_ws == 2'b00 ? {{24{sgn ? rdata[7] : 1'b0}}, rdata[7:0]} : // LB/LBU
+      dcache_ws == 2'b01 ? {{16{sgn ? rdata[15] : 1'b0}}, rdata[15:0]} : // LH/LHU
+                           rdata; // LW
+  wire [31:0] res = (ctrl_mem[1:0] == 2'b10) ? res_mem : res_alu;
+  // ...
+
+At last, the write-back stage is fairly simple in its logic, as most of it is
+already taken care of in the ``register_file`` module. It just wires the result
+to the destination register:
+
+.. code-block:: verilog
+
+  // ...
+  assign reg_waddr = rd;
+  assign reg_wdata = res;
+  assign reg_wen = valid && ctrl_wb;
+  // ... (the rest of the code in core.sv is about handling
+  // CSR/traps at the end of the pipeline)
+
+
+Hazards: Stalls, Bubbles and Forwarding
+--------------------------------------------------------
 
 
 When the Execution Gets Interrupted...

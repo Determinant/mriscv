@@ -413,7 +413,7 @@ this project, is to calculate whether there is transfer of the control flow:</p>
 </div>
 <p>The shown combinational logics implements the control signal that determines
 whether the processor should move its program counter to a different location
-other than the next instruction (<code class="docutils literal notranslate"><span class="pre">PC</span></code> + 4).  <code class="docutils literal notranslate"><span class="pre">ctrl_jump</span></code> signals 1 if the
+other than the next instruction (PC + 4).  <code class="docutils literal notranslate"><span class="pre">ctrl_jump</span></code> signals 1 if the
 processor needs to “jump” to other places, which could be caused by branching
 (e.g. <code class="docutils literal notranslate"><span class="pre">BNE</span></code>), or function calls (e.g. <code class="docutils literal notranslate"><span class="pre">JAL</span></code>). These control signals will
 connect to the logic that fetches the instruction and advances the PC. We’ll
@@ -458,15 +458,180 @@ the subsequent stage:</p>
 </div>
 <div class="section" id="executor-all-about-computing">
 <h3>Executor: All About “Computing”<a class="headerlink" href="#executor-all-about-computing" title="Permalink to this headline">¶</a></h3>
+<p>The executor mostly consists of an ALU (and a multiplier/divider if RISC-V “M”
+extension needs to be supported). As a simple implementation, here we just use
+a multi-way mux to select the calculation by
+<code class="docutils literal notranslate"><span class="pre">ctrl_alu_func</span></code> from last decoder stage, for the given operands:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">res</span> <span class="o">=</span> <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FADD</span> <span class="o">?</span> <span class="p">(</span><span class="n">ctrl_alu_sign_ext</span> <span class="o">?</span> <span class="n">op1</span> <span class="o">-</span> <span class="n">op2</span> <span class="o">:</span> <span class="n">op1</span> <span class="o">+</span> <span class="n">op2</span><span class="p">)</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FSLT</span> <span class="o">?</span> <span class="p">(</span><span class="n">$signed</span><span class="p">(</span><span class="n">op1</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">$signed</span><span class="p">(</span><span class="n">op2</span><span class="p">)</span> <span class="o">?</span> <span class="mh">1</span> <span class="o">:</span> <span class="mh">0</span><span class="p">)</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FSLTU</span> <span class="o">?</span> <span class="p">(</span><span class="n">op1</span> <span class="o">&lt;</span> <span class="n">op2</span> <span class="o">?</span> <span class="mh">1</span> <span class="o">:</span> <span class="mh">0</span><span class="p">)</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FXOR</span> <span class="o">?</span> <span class="p">(</span><span class="n">op1</span> <span class="o">^</span> <span class="n">op2</span><span class="p">)</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FOR</span> <span class="o">?</span> <span class="p">(</span><span class="n">op1</span> <span class="o">|</span> <span class="n">op2</span><span class="p">)</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FAND</span> <span class="o">?</span> <span class="p">(</span><span class="n">op1</span> <span class="o">&amp;</span> <span class="n">op2</span><span class="p">)</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FSLL</span> <span class="o">?</span> <span class="p">(</span><span class="n">op1</span> <span class="o">&lt;&lt;</span> <span class="n">op2</span><span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">])</span> <span class="o">:</span>
+           <span class="n">ctrl_alu_func</span> <span class="o">==</span> <span class="no">`FSRX</span> <span class="o">?</span> <span class="p">(</span><span class="n">ctrl_alu_sign_ext</span> <span class="o">?</span> <span class="n">$signed</span><span class="p">(</span><span class="n">op1</span><span class="p">)</span> <span class="o">&gt;&gt;</span> <span class="n">op2</span><span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="o">:</span> <span class="n">op1</span> <span class="o">&gt;&gt;</span> <span class="n">op2</span><span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">])</span> <span class="o">:</span> <span class="p">&#39;</span><span class="n">bx</span><span class="p">;</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
+<p>For the purpose of this project, we can just use the built-in arithmetic and
+logic operations provided by SystemVerilog, which can be reasonably synthesized
+for practical use, to support the base instruction set (“I”).  For “M” extension, some
+hand-crafted RTL implementation of the multiplier may be desirable, and one can
+optimize the different paths of the mux to reduce the latency in the overall
+circuitry, which isn’t the focus of this project. Readers who are interested
+in this part can try to plug in their own implementations to this module for these
+calculations easily.</p>
+<p>Finally, as in any other stages, the execution result is stored to a stage
+register and some other registers that skip this stage are passed on, by the
+end of each cycle:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+            <span class="n">res_reg</span> <span class="o">&lt;=</span> <span class="n">res</span><span class="p">;</span>
+            <span class="n">rd_reg</span> <span class="o">&lt;=</span> <span class="n">rd</span><span class="p">;</span>
+<span class="c1">// ...</span>
+            <span class="n">tmp_reg</span> <span class="o">&lt;=</span> <span class="n">tmp</span><span class="p">;</span>
+            <span class="n">pc_reg</span> <span class="o">&lt;=</span> <span class="n">pc</span><span class="p">;</span>
+            <span class="n">exc_reg</span> <span class="o">&lt;=</span> <span class="n">exc</span><span class="p">;</span>
+            <span class="n">ctrl_wb_reg</span> <span class="o">&lt;=</span> <span class="n">ctrl_wb</span><span class="p">;</span>
+<span class="c1">// ...</span>
+            <span class="n">ctrl_mem_reg</span> <span class="o">&lt;=</span> <span class="n">ctrl_mem</span><span class="p">;</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
 </div>
 <div class="section" id="fetcher-automation-and-loop">
 <h3>Fetcher: Automation and Loop<a class="headerlink" href="#fetcher-automation-and-loop" title="Permalink to this headline">¶</a></h3>
+<p>So far we know how to decode and execute the instructions, but the processor
+still does not automate its work cycles. Like a machine gun, it needs to
+automatically feeds in the next instruction to be decoded when last instruction
+gets through the decoder, so another round of decoding can happen
+when the execution stage continues to work on the decoded instruction. In our code,
+a fetching phase, implemented by the <code class="docutils literal notranslate"><span class="pre">fetcher</span></code> module serves as the portal
+to the processor pipeline and fetches the correct instruction from the <em>instruction cache</em> (“i-cache”).
+We deliberately abstract away the hierarchy of cache and memory in <code class="docutils literal notranslate"><span class="pre">mrisv</span></code>, as a modern
+processor usually only directly talks to its L1-cache, whose minimal interface is captured
+by our core implementation:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="c1">// i-cache communication</span>
+<span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">icache_addr</span><span class="p">,</span>
+<span class="c1">// request flag, having the level of 1 will trigger a request</span>
+<span class="c1">// of 4-byte data at the address given by `icache_addr` when</span>
+<span class="c1">// the i-cache is in `idle` state, and it should enter a `pending`</span>
+<span class="c1">// state which ignores the inputs from the processor and prepare</span>
+<span class="c1">// the data in `icache_data`</span>
+<span class="k">output</span> <span class="n">icache_req</span><span class="p">,</span>
+<span class="k">input</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">icache_data</span><span class="p">,</span>
+<span class="c1">// ready flag, should be set to 1 when the i-cache is in</span>
+<span class="c1">// `pending` state and has stabilized the valid value in</span>
+<span class="c1">// `icache_data`. In the same cycle of setting the ready flag,</span>
+<span class="c1">// it should go back to the `idle` state. When the i-cache is</span>
+<span class="c1">// in `idle` state during a cycle, it sets `icache_rdy` to 0.</span>
+<span class="k">input</span> <span class="n">icache_rdy</span><span class="p">,</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
+<p>Here, <code class="docutils literal notranslate"><span class="pre">icache_addr</span></code> indicates the physical address of the in-memory word (32-bit
+integer) the processor wants to fetch next, <code class="docutils literal notranslate"><span class="pre">icache_req</span></code> flag is maintain at
+1 (level-triggered) if a read is requested. When the request flag is 1 and the
+i-cache is in <code class="docutils literal notranslate"><span class="pre">idle</span></code>, it first sets <code class="docutils literal notranslate"><span class="pre">icache_rdy</span></code> flag to 0 and enter the
+<code class="docutils literal notranslate"><span class="pre">pending</span></code> state for the next cycle.  When the word data is stable and ready
+in <code class="docutils literal notranslate"><span class="pre">icache_data</span></code> wires, i-cache sets <code class="docutils literal notranslate"><span class="pre">icache_rdy</span></code> to 1 and goes back to
+<code class="docutils literal notranslate"><span class="pre">idle</span></code> state. Thus, it takes at least 1 cycle and
+may take <em>more</em> cycles for the fetching to finish, and our processor
+accounts for this correctly. The diagram below shows four continuous reads that
+take 1 cycle, followed by a single read that takes 3 cycles:</p>
+<a class="reference internal image-reference" href="_images/i-cache.svg"><img alt="_images/i-cache.svg" class="align-center" src="_images/i-cache.svg" width="100%" /></a>
+<p>To make the entire SoC design runs on
+FPGA, readers need to plug in their own cache implementation and memory
+controller interface (e.g. some DDR IP core generated by commercial tools such as
+Xilinx Vivado) as the i-cache, according to this simple interface. While this
+allows flexibility in interesting use cases, in this repo, we just emulate
+cache and memory all together with a few lines of code in <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code> to
+demonstrate the usage and keep our code base minimal and clean.</p>
+<p>To set the PC correctly, <code class="docutils literal notranslate"><span class="pre">fetcher</span></code> uses a mux to account for three cases:</p>
+<ul class="simple">
+<li><p>normal advances of PC: PC + 4 (as each instruction is 4-byte word in RV32I);</p></li>
+<li><p>control flow transfers by some previous instruction: <code class="docutils literal notranslate"><span class="pre">ctrl_jump</span></code> and <code class="docutils literal notranslate"><span class="pre">pc_jump_target</span></code> inputs;</p></li>
+<li><p>trap (for processor exceptions or interrupts) handling: <code class="docutils literal notranslate"><span class="pre">ctrl_trap</span></code> and <code class="docutils literal notranslate"><span class="pre">pc_exc_target</span></code>.</p></li>
+</ul>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">next_pc</span> <span class="o">=</span> <span class="n">ctrl_jump</span> <span class="o">?</span> <span class="n">pc_jump_target</span> <span class="o">:</span> <span class="p">(</span><span class="n">pc</span> <span class="o">+</span> <span class="mh">4</span><span class="p">);</span>
+<span class="c1">// ...</span>
+        <span class="n">pc</span> <span class="o">&lt;=</span> <span class="n">ctrl_trap</span> <span class="o">?</span> <span class="n">pc_exc_target</span> <span class="o">:</span> <span class="n">next_pc</span><span class="p">;</span>
+        <span class="n">inst_reg</span> <span class="o">&lt;=</span> <span class="n">icache_data</span><span class="p">;</span>
+        <span class="n">pc_reg</span> <span class="o">&lt;=</span> <span class="n">pc</span><span class="p">;</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
 </div>
 <div class="section" id="memory-access-writeback">
 <h3>Memory Access &amp; Writeback<a class="headerlink" href="#memory-access-writeback" title="Permalink to this headline">¶</a></h3>
+<p>Like single-cycle processors, a pipelined design also needs to finalize the
+state change at the end of an instruction. There are two kinds of state changes:</p>
+<ul class="simple">
+<li><p>internal: the change of general/special registers specified by the ISA</p></li>
+<li><p>external: the change made to main memory locations, usually byte/half word/word-addressed</p></li>
+</ul>
+<p>For RISC-V, the external state change can only be done via memory store
+instructions. Like instruction cache, there is a dedicated processor cache,
+<em>data cache</em> (“d-cache”) that is used for caching data accessed by the memory loads/stores.</p>
+<p>This style of distinguishing storage of instruction from data is usually called
+<em>Havard architecture</em>, whereas <em>von Neumann architecture</em> treats instructions
+and data the same way (“programs are also data”). For modern computer systems,
+however, the model is more like a hybrid version of both kinds: most
+micro-architectures have separate i-cache and d-cache for better performance
+due to the different access pattern for each kind, while programs they support
+do not have such distinction (both instructions and data are stored in the unified memory space).</p>
+<p>Our d-cache interface is very similar to the i-cache:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_addr</span><span class="p">,</span>
+<span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_wdata</span><span class="p">,</span>
+<span class="k">output</span> <span class="p">[</span><span class="mh">1</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_ws</span><span class="p">,</span>
+<span class="k">output</span> <span class="n">dcache_req</span><span class="p">,</span>
+<span class="k">output</span> <span class="n">dcache_wr</span><span class="p">,</span>
+<span class="k">input</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_rdata</span><span class="p">,</span>
+<span class="k">input</span> <span class="n">dcache_rdy</span><span class="p">,</span>
+<span class="c1">// ...</span>
+</pre></div>
 </div>
-<div class="section" id="resolving-inter-stage-dependency">
-<h3>Resolving Inter-Stage Dependency<a class="headerlink" href="#resolving-inter-stage-dependency" title="Permalink to this headline">¶</a></h3>
+<p>It has the following differences:</p>
+<ul class="simple">
+<li><p>unlike the read-only i-cache, d-cache can be in either read or write state,
+so <code class="docutils literal notranslate"><span class="pre">dcache_wr</span></code> is used as the flag and <code class="docutils literal notranslate"><span class="pre">dcache_wdata</span></code> is used as the
+value for writes;</p></li>
+<li><p>all instructions are of the same length, but RV32I allows manipulating data
+with different byte-widths (bytes: 1, half-words: 2, words: 4), so
+<code class="docutils literal notranslate"><span class="pre">dcache_ws</span></code> is used to indicate the width: 0 for bytes, 1 for half-words
+and 2 for words.</p></li>
+</ul>
+<p>The operational logic for d-cache is similar to i-cache. It is also a
+request-based protocol and the data are placed in the lower bits for sizes
+smaller than a word.</p>
+<p>The resulting value after the memory stage is either the passed-on value from execution stage,
+or the value loaded from the memory:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">res_mem</span> <span class="o">=</span>
+    <span class="n">dcache_ws</span> <span class="o">==</span> <span class="mh">2</span><span class="mb">&#39;b00</span> <span class="o">?</span> <span class="p">{{</span><span class="mh">24</span><span class="p">{</span><span class="n">sgn</span> <span class="o">?</span> <span class="n">rdata</span><span class="p">[</span><span class="mh">7</span><span class="p">]</span> <span class="o">:</span> <span class="mh">1</span><span class="mb">&#39;b0</span><span class="p">}},</span> <span class="n">rdata</span><span class="p">[</span><span class="mh">7</span><span class="o">:</span><span class="mh">0</span><span class="p">]}</span> <span class="o">:</span> <span class="c1">// LB/LBU</span>
+    <span class="n">dcache_ws</span> <span class="o">==</span> <span class="mh">2</span><span class="mb">&#39;b01</span> <span class="o">?</span> <span class="p">{{</span><span class="mh">16</span><span class="p">{</span><span class="n">sgn</span> <span class="o">?</span> <span class="n">rdata</span><span class="p">[</span><span class="mh">15</span><span class="p">]</span> <span class="o">:</span> <span class="mh">1</span><span class="mb">&#39;b0</span><span class="p">}},</span> <span class="n">rdata</span><span class="p">[</span><span class="mh">15</span><span class="o">:</span><span class="mh">0</span><span class="p">]}</span> <span class="o">:</span> <span class="c1">// LH/LHU</span>
+                         <span class="n">rdata</span><span class="p">;</span> <span class="c1">// LW</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">res</span> <span class="o">=</span> <span class="p">(</span><span class="n">ctrl_mem</span><span class="p">[</span><span class="mh">1</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="o">==</span> <span class="mh">2</span><span class="mb">&#39;b10</span><span class="p">)</span> <span class="o">?</span> <span class="n">res_mem</span> <span class="o">:</span> <span class="n">res_alu</span><span class="p">;</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
+<p>At last, the write-back stage is fairly simple in its logic, as most of it is
+already taken care of in the <code class="docutils literal notranslate"><span class="pre">register_file</span></code> module. It just wires the result
+to the destination register:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="k">assign</span> <span class="n">reg_waddr</span> <span class="o">=</span> <span class="n">rd</span><span class="p">;</span>
+<span class="k">assign</span> <span class="n">reg_wdata</span> <span class="o">=</span> <span class="n">res</span><span class="p">;</span>
+<span class="k">assign</span> <span class="n">reg_wen</span> <span class="o">=</span> <span class="n">valid</span> <span class="o">&amp;&amp;</span> <span class="n">ctrl_wb</span><span class="p">;</span>
+<span class="c1">// ... (the rest of the code in core.sv is about handling</span>
+<span class="c1">// CSR/traps at the end of the pipeline)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="hazards-stalls-bubbles-and-forwarding">
+<h3>Hazards: Stalls, Bubbles and Forwarding<a class="headerlink" href="#hazards-stalls-bubbles-and-forwarding" title="Permalink to this headline">¶</a></h3>
 </div>
 <div class="section" id="when-the-execution-gets-interrupted">
 <h3>When the Execution Gets Interrupted…<a class="headerlink" href="#when-the-execution-gets-interrupted" title="Permalink to this headline">¶</a></h3>
