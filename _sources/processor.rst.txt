@@ -195,9 +195,99 @@ why processors nowadays are "pipelined", the topic of the next section.
 Instruction Pipelining
 ----------------------
 
+There are many possible schemes for a processor design. The simplest idea is
+to utilze the "loop" we just talked about to mainly divide the processor into
+two parts:
+
+- Computation: this part can be built with a cascade of combinational logics
+  that "generates" the result from the wire, as signals go through a series of
+  gates.  More specifically, it first decodes the instruction into data and control
+  signals.  Then it immediately wires the data into an *Arithmetic Logic Unit*
+  (ALU). An ALU is built by a mux which selects the kind of calculation the
+  instruction needs to perform, given the control signal. It may also use the
+  operands from the register files, which is the current state of the
+  underlying flip-flops. Overall, the next state for the processor is prepared
+  in this giant fabric of purely combinational logic.
+
+- State Transition: the results from the computation logic are ephemeral, like
+  the other end of an eletric wire. We thus would like a sequential logic that
+  finally updates the processor's state before the clock cycle ends. Usually such sequential logic
+  is done together with the register file, which writes back the outcome of the
+  execution to its flip-flops. The changed values will become available again
+  at the beginning of the next cycle, when used again by the combinational
+  logic by the computation.
+
+The scheme is usually called a *single cycle* processor. The main
+advantage of choosing this scheme is that it is fairly easy to implement with limited number of gates
+and low complexity. It has many downsides, so few modern processors still use
+it. A major one is the processing throughput (e.g. instruction per
+sercond) equals to the clock frequency as the processor can exactly handle
+only one instruction per cycle. Whereas the choice for the clock cycle time is not
+arbitrary: like we previously said, the longest circuitry in the
+combinational logic for computation sets the lower-bound for the cycle time,
+which is not scalable for implementing a modern, realistic CPU, due to the
+complicated specification of the ISA. Even worse, the cache/memory access time during the
+computation can drag the cycle time even further, resulting in a low average
+frequency for the processor.
+
+Nowadays, you would probably see builds of single-cycle processors in some
+hobby CPU projects (e.g. built with discrete components like DIP-packaged TTL
+logic ICs) and in "Turning-complete" games such as Minecraft/Factorio, where people wish
+to have managable amount of work to build a cool proof-of-concept computer.
+
+Therefore, researchers and engineers have come up with numerous ways to get
+around this limitation and largely improved the throughput by *instruction-level
+parallelism*. One of the greatest technique that is seen on almost every chips
+nowadays is instruction *pipelining*. The high-level idea though, is simple and
+intuitive: we can divide the flow of that "giant" computation logic into
+several *stages* and try to process each instruction as in a car factory with
+an assembly pipeline. Each stage has its own sequential logic, so the clock cycle
+time only needs to accommodate the longest stage in the pipeline, instead of the entire
+pipeline. Therefore, for a given number of stages, the ideal case is we
+wisely divide the task so that all stages have similar amount of time for their
+combinational logic (similar depth).
+This technique is much more scalable than the
+single-cycle design, as the designer can choose to use more stages in the
+pipeline to account for more complex logic required for the target ISA. For
+example, an Intel Skylake CPU (whose ISA is x86-64) has around 14 stages
+whereas an ARM Cortex-A77 (whose ISA is ARM64) has 13.
+
+In this ``mriscv`` project, we use a classic 5-stage pipeline design that divides
+the computation into the following stages:
+
+- instruction fetch (IF)
+- instruction decode (ID)
+- execution (EX)
+- memory access (MEM)
+- register file write back (WB)
+
+which was once a typical arrangement for a RISC processor (e.g. MIPS). There is only one
+memory access stage in the pipeline thanks to the simplicity of load/store
+nature of RISC: there is no instruction that needs to both access
+(load/store) memory and do other computation at the same time, which greately
+simplifies the pipeline. Overall, each instruction will do one kind of the operations listed below:
+
+- math computation with registers, and write back the result to a register;
+- memory access: load from/store to memory, based on the address provided by registers and the data destination/source is also a register;
+- control flow: conditionally/unconditionally change the current *Program
+  Counter* (PC, pointing to the instruction being executed) to other location.
+
+Unlike many other projects, ``mriscv`` adopts a clean and modular kind of
+organization in its one-file core code (``core.sv``). The five stages are
+implemented in their own modules (``fetcher``, ``decoder``, ``executor``,
+``memory`` and ``writeback``) and put together in ``core`` module. This
+manifests the data path and control lines that each stage offers and requires.
+You can also try to tweak/modify the code of one specific stage for your own
+purpose.
+
 
 Decoder: Parsing an Instruction
 -------------------------------
+If you're familiar with shell/scripting languages like Bash, Python or
+Javascript, you must have heard of the term "interpreter". Likewise, a
+processor is "merely" a hardware-built interpreter that efficiently supports a
+handful of commands (instructions) by following their syntax (binary format)
+and semantics (behavior) specified by the ISA.
 
 
 Executor: All About "Computing"
