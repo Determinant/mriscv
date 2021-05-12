@@ -1,8 +1,8 @@
 Emulate a Realistic SoC environment
 +++++++++++++++++++++++++++++++++++
 
-Starting up a program
----------------------
+No Longer a "Toy": Starting up a compiled program
+-------------------------------------------------
 
 Memory-Mapped Registers
 -----------------------
