@@ -875,7 +875,8 @@ module core (
     // `pending` state and has stabilized the valid value in
     // `icache_data`. In the same cycle of setting the ready flag,
     // it should go back to the `idle` state. When the i-cache is
-    // in `idle` state during a cycle, it sets `icache_rdy` to 0.
+    // in `idle` state at the beginning of a cycle, it sets
+    // `icache_rdy` to 0.
     input icache_rdy,
 
     // d-cache communication

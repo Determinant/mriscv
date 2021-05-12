@@ -525,7 +525,8 @@ by our core implementation:</p>
 <span class="c1">// `pending` state and has stabilized the valid value in</span>
 <span class="c1">// `icache_data`. In the same cycle of setting the ready flag,</span>
 <span class="c1">// it should go back to the `idle` state. When the i-cache is</span>
-<span class="c1">// in `idle` state during a cycle, it sets `icache_rdy` to 0.</span>
+<span class="c1">// in `idle` state at the beginning of a cycle, it sets</span>
+<span class="c1">// `icache_rdy` to 0.</span>
 <span class="k">input</span> <span class="n">icache_rdy</span><span class="p">,</span>
 <span class="c1">// ...</span>
 </pre></div>
