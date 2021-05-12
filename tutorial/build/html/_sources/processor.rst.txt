@@ -287,8 +287,161 @@ If you're familiar with shell/scripting languages like Bash, Python or
 Javascript, you must have heard of the term "interpreter". Likewise, a
 processor is "merely" a hardware-built interpreter that efficiently supports a
 handful of commands (instructions) by following their syntax (binary format)
-and semantics (behavior) specified by the ISA.
+and semantics (behavior) specified by the ISA. As the name suggests, an
+interpreter first needs to "understand" what an instruction is all about, by
+parsing, or in the term of digital circuits, *decoding* the given instruction.
 
+Luckily, thanks to the elegant design of RISC-V ISA, the format of instructions
+in RV32I is very regular. It tends to use the same structure for similar
+instructions and put operands to the same bit portion of the 32-bit word for
+most of the instructions. Furthermore, it uses a somewhat hierarchical
+approach: with "function" code (``funct3``, ``funct7``, etc.), variants of the
+same base operation can be treated in the same way for some cases and
+differently for their own semantics. Sometimes function code is
+deliberately not continuous to allow testing some bit of the code to efficiently
+tell the special treatment.
+
+In our ``decoder`` code, we rename the group of wires according to the bit
+fields in a instruction.
+
+.. code-block:: verilog
+
+  wire [6:0] opcode = inst[6:0];
+  wire [2:0] funct3 = inst[14:12];
+  wire [11:0] funct12 = inst[31:20];
+  wire [4:0] rs1 = inst[19:15];
+  wire [4:0] rs2 = inst[24:20];
+  wire [4:0] rd = inst[11:7];
+  wire [31:0] ui = {inst[31:12], 12'b0}; //< load upper immediate
+  wire [31:0] xxxi = {{20{inst[31]}}, inst[31:20]}; //< sign-extended immediate
+  wire [20:0] jal_offset = {inst[31], inst[19:12], inst[20], inst[30:21], 1'b0};
+  wire [11:0] jalr_offset = inst[31:20];
+  wire [12:0] b_offset = {inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
+  wire [11:0] l_offset = inst[31:20];
+  wire [11:0] s_offset = {inst[31:25], inst[11:7]};
+  // ... (see core.sv for the complete content)
+
+RISC-V instructions usually uses two operand registers (``rs1``, ``rs2``) and
+one destination register (``rd``). One of the main task the decoder has to do
+here is to store the current values of operands to an stage-end register by the
+end of the cycle:
+
+.. code-block:: verilog
+
+  wire [31:0] op1 = (ctrl_forward_valid_exec && rs1 == ctrl_forward_rd_exec) ? forward_data_exec:
+                    (ctrl_forward_valid_mem && rs1 == ctrl_forward_rd_mem) ? forward_data_mem:
+                                                                             reg_rdata1;
+  wire [31:0] op2 = (ctrl_forward_valid_exec && rs2 == ctrl_forward_rd_exec) ? forward_data_exec:
+                    (ctrl_forward_valid_mem && rs2 == ctrl_forward_rd_mem) ? forward_data_mem:
+                                                                             reg_rdata2;
+
+The combinational logic for ``op1`` seems a bit more complex than imagined, due to the need for *forwarding*
+that we'll later get to. For now, let's ignore these wires/registers with "forward" in their names, so
+the actual logic here is:
+
+.. code-block:: verilog
+
+  wire [31:0] op1 = reg_rdata1;
+  wire [31:0] op2 = reg_rdata2;
+
+Here, ``reg_rdata1`` and ``reg_rdata2`` are the output signals from the
+register file (pins from a ``register_file`` module instance) that keeps
+flip-flops for all 32 standard RV32I registers. As part of the combinational
+logic, the "addresses" (0-31) of the registers we'd like to access are wired to
+``rs1`` and ``rs2``:
+
+.. code-block:: verilog
+
+  // wire to read from register file
+  assign reg_raddr1 = rs1;
+  assign reg_raddr2 = rs2;
+
+The register file is implemented in its own SystemVerilog module, whose interface is:
+
+.. code-block:: verilog
+
+  module register_file(
+      input [4:0] raddr1,
+      input [4:0] raddr2,
+      output [31:0] rdata1,
+      output [31:0] rdata2,
+  
+      input [4:0] waddr,
+      input [31:0] wdata,
+      input wen, //< write enable
+  
+      input ctrl_clk //< clock
+  );
+
+In the ``core`` module, decoder's pin ``reg_raddr1`` is wired to ``raddr1`` and
+``reg_rdata1`` is wired to ``rdata1``. The same is for the other operand.
+
+Another important thing the decoder needs to do, according to the design in
+this project, is to calculate whether there is transfer of the control flow:
+
+.. code-block:: verilog
+
+  // set jump signal for control transfer instructions
+  assign ctrl_pc_jump_target =
+      opcode == `JAL ? pc + $signed({{11{jal_offset[20]}}, jal_offset}) :
+      opcode == `JALR ? op1 + $signed({{20{jalr_offset[11]}}, jalr_offset}) :
+      opcode == `BXX ? pc + $signed({{19{b_offset[12]}}, b_offset}) : 'bx;
+  assign ctrl_jump = (!ctrl_skip_next_reg) &&
+      (opcode == `JAL ? 1 :
+      opcode == `JALR ? 1 :
+      opcode == `BXX ?
+          (funct3[2:1] == 0 ? ((op1 == op2) ^ (funct3[0])) : // BEQ & BNE
+           (funct3[1] == 0 ?
+                (($signed(op1) < $signed(op2)) ^ (funct3[0])) : // BLT & BGE
+                ((op1 < op2) ^ (funct3[0])))) : // BLTU & BGEU
+                0);
+
+The shown combinational logics implements the control signal that determines
+whether the processor should move its program counter to a different location
+other than the next instruction (``PC`` + 4).  ``ctrl_jump`` signals 1 if the
+processor needs to "jump" to other places, which could be caused by branching
+(e.g. ``BNE``), or function calls (e.g. ``JAL``). These control signals will
+connect to the logic that fetches the instruction and advances the PC. We'll
+revisit this part later.
+
+Finally, at the end of each cycle, the decoder should already prepare the
+decoded information of the instruction, which is stored in SystemVerilog
+registers (``logic`` is the same as ``reg`` in this context, essentially flip-flops) so they can be used as the inputs in the next cycle of
+the subsequent stage:
+
+.. code-block:: verilog
+
+  // ...
+  output logic [31:0] op1_reg,    // op1 for ALU
+  output logic [31:0] op2_reg,    // op2 for ALU
+  output logic [4:0] rd_reg,      // destination general register for writeback
+  // ...
+  output logic [31:0] tmp_reg,    // keeps some additional value that skips ALU
+  output logic [31:0] pc_reg,     // pass on the instruction address
+  // ...
+  output logic [2:0] ctrl_alu_func_reg, // ALU function selection
+  output logic ctrl_alu_sign_ext_reg, //  ALU sign extension flag
+  output logic ctrl_nop_reg, // if the current instruction should be treated as a no-op
+  output logic ctrl_wb_reg, // if the instruction needs to write back to a register (use rd_reg in WB stage)
+  // ...
+  output logic [4:0] ctrl_mem_reg, // if the instruction needs to access memory (MEM stage)
+  output [31:0] ctrl_pc_jump_target, // PC target (only valid if ctrl_jump = 1)
+  output ctrl_jump, // if there is a (non-trap) control flow transfer
+  // ...
+  // (see core.sv for the complete implementation)
+  // (here we just show one logic path that could prepare the value
+  // for `op1_reg`)
+                  `XXXI: begin
+                      op1_reg <= op1;
+                      op2_reg <= xxxi;
+                      exc_reg <= exc;
+                      ctrl_alu_func_reg <= funct3;
+                      ctrl_alu_sign_ext_reg <= (funct3 == `FSRX) && inst[30];
+                      ctrl_wb_reg <= 1;
+                      ctrl_wb_csr_reg <= 0;
+                      ctrl_mem_reg <= 0;
+                  end
+  // ...
 
 Executor: All About "Computing"
 -------------------------------

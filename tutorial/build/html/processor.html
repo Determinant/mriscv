@@ -288,7 +288,144 @@ purpose.</p>
 Javascript, you must have heard of the term “interpreter”. Likewise, a
 processor is “merely” a hardware-built interpreter that efficiently supports a
 handful of commands (instructions) by following their syntax (binary format)
-and semantics (behavior) specified by the ISA.</p>
+and semantics (behavior) specified by the ISA. As the name suggests, an
+interpreter first needs to “understand” what an instruction is all about, by
+parsing, or in the term of digital circuits, <em>decoding</em> the given instruction.</p>
+<p>Luckily, thanks to the elegant design of RISC-V ISA, the format of instructions
+in RV32I is very regular. It tends to use the same structure for similar
+instructions and put operands to the same bit portion of the 32-bit word for
+most of the instructions. Furthermore, it uses a somewhat hierarchical
+approach: with “function” code (<code class="docutils literal notranslate"><span class="pre">funct3</span></code>, <code class="docutils literal notranslate"><span class="pre">funct7</span></code>, etc.), variants of the
+same base operation can be treated in the same way for some cases and
+differently for their own semantics. Sometimes function code is
+deliberately not continuous to allow testing some bit of the code to efficiently
+tell the special treatment.</p>
+<p>In our <code class="docutils literal notranslate"><span class="pre">decoder</span></code> code, we rename the group of wires according to the bit
+fields in a instruction.</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="kt">wire</span> <span class="p">[</span><span class="mh">6</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">opcode</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">6</span><span class="o">:</span><span class="mh">0</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">2</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">funct3</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">14</span><span class="o">:</span><span class="mh">12</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">funct12</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">20</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">rs1</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">19</span><span class="o">:</span><span class="mh">15</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">rs2</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">24</span><span class="o">:</span><span class="mh">20</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">rd</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">7</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">ui</span> <span class="o">=</span> <span class="p">{</span><span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">12</span><span class="p">],</span> <span class="mh">12</span><span class="mb">&#39;b0</span><span class="p">};</span> <span class="c1">//&lt; load upper immediate</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">xxxi</span> <span class="o">=</span> <span class="p">{{</span><span class="mh">20</span><span class="p">{</span><span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="p">]}},</span> <span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">20</span><span class="p">]};</span> <span class="c1">//&lt; sign-extended immediate</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">20</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">jal_offset</span> <span class="o">=</span> <span class="p">{</span><span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">19</span><span class="o">:</span><span class="mh">12</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">20</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">30</span><span class="o">:</span><span class="mh">21</span><span class="p">],</span> <span class="mh">1</span><span class="mb">&#39;b0</span><span class="p">};</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">jalr_offset</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">20</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">12</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">b_offset</span> <span class="o">=</span> <span class="p">{</span><span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">7</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">30</span><span class="o">:</span><span class="mh">25</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">8</span><span class="p">],</span> <span class="mh">1</span><span class="mb">&#39;b0</span><span class="p">};</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">l_offset</span> <span class="o">=</span> <span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">20</span><span class="p">];</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">s_offset</span> <span class="o">=</span> <span class="p">{</span><span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">25</span><span class="p">],</span> <span class="n">inst</span><span class="p">[</span><span class="mh">11</span><span class="o">:</span><span class="mh">7</span><span class="p">]};</span>
+<span class="c1">// ... (see core.sv for the complete content)</span>
+</pre></div>
+</div>
+<p>RISC-V instructions usually uses two operand registers (<code class="docutils literal notranslate"><span class="pre">rs1</span></code>, <code class="docutils literal notranslate"><span class="pre">rs2</span></code>) and
+one destination register (<code class="docutils literal notranslate"><span class="pre">rd</span></code>). One of the main task the decoder has to do
+here is to store the current values of operands to an stage-end register by the
+end of the cycle:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">op1</span> <span class="o">=</span> <span class="p">(</span><span class="n">ctrl_forward_valid_exec</span> <span class="o">&amp;&amp;</span> <span class="n">rs1</span> <span class="o">==</span> <span class="n">ctrl_forward_rd_exec</span><span class="p">)</span> <span class="o">?</span> <span class="nl">forward_data_exec:</span>
+                  <span class="p">(</span><span class="n">ctrl_forward_valid_mem</span> <span class="o">&amp;&amp;</span> <span class="n">rs1</span> <span class="o">==</span> <span class="n">ctrl_forward_rd_mem</span><span class="p">)</span> <span class="o">?</span> <span class="nl">forward_data_mem:</span>
+                                                                           <span class="n">reg_rdata1</span><span class="p">;</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">op2</span> <span class="o">=</span> <span class="p">(</span><span class="n">ctrl_forward_valid_exec</span> <span class="o">&amp;&amp;</span> <span class="n">rs2</span> <span class="o">==</span> <span class="n">ctrl_forward_rd_exec</span><span class="p">)</span> <span class="o">?</span> <span class="nl">forward_data_exec:</span>
+                  <span class="p">(</span><span class="n">ctrl_forward_valid_mem</span> <span class="o">&amp;&amp;</span> <span class="n">rs2</span> <span class="o">==</span> <span class="n">ctrl_forward_rd_mem</span><span class="p">)</span> <span class="o">?</span> <span class="nl">forward_data_mem:</span>
+                                                                           <span class="n">reg_rdata2</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>The combinational logic for <code class="docutils literal notranslate"><span class="pre">op1</span></code> seems a bit more complex than imagined, due to the need for <em>forwarding</em>
+that we’ll later get to. For now, let’s ignore these wires/registers with “forward” in their names, so
+the actual logic here is:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">op1</span> <span class="o">=</span> <span class="n">reg_rdata1</span><span class="p">;</span>
+<span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">op2</span> <span class="o">=</span> <span class="n">reg_rdata2</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>Here, <code class="docutils literal notranslate"><span class="pre">reg_rdata1</span></code> and <code class="docutils literal notranslate"><span class="pre">reg_rdata2</span></code> are the output signals from the
+register file (pins from a <code class="docutils literal notranslate"><span class="pre">register_file</span></code> module instance) that keeps
+flip-flops for all 32 standard RV32I registers. As part of the combinational
+logic, the “addresses” (0-31) of the registers we’d like to access are wired to
+<code class="docutils literal notranslate"><span class="pre">rs1</span></code> and <code class="docutils literal notranslate"><span class="pre">rs2</span></code>:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// wire to read from register file</span>
+<span class="k">assign</span> <span class="n">reg_raddr1</span> <span class="o">=</span> <span class="n">rs1</span><span class="p">;</span>
+<span class="k">assign</span> <span class="n">reg_raddr2</span> <span class="o">=</span> <span class="n">rs2</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>The register file is implemented in its own SystemVerilog module, whose interface is:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">register_file</span><span class="p">(</span>
+    <span class="k">input</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">raddr1</span><span class="p">,</span>
+    <span class="k">input</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">raddr2</span><span class="p">,</span>
+    <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">rdata1</span><span class="p">,</span>
+    <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">rdata2</span><span class="p">,</span>
+
+    <span class="k">input</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">waddr</span><span class="p">,</span>
+    <span class="k">input</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">wdata</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">wen</span><span class="p">,</span> <span class="c1">//&lt; write enable</span>
+
+    <span class="k">input</span> <span class="n">ctrl_clk</span> <span class="c1">//&lt; clock</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>In the <code class="docutils literal notranslate"><span class="pre">core</span></code> module, decoder’s pin <code class="docutils literal notranslate"><span class="pre">reg_raddr1</span></code> is wired to <code class="docutils literal notranslate"><span class="pre">raddr1</span></code> and
+<code class="docutils literal notranslate"><span class="pre">reg_rdata1</span></code> is wired to <code class="docutils literal notranslate"><span class="pre">rdata1</span></code>. The same is for the other operand.</p>
+<p>Another important thing the decoder needs to do, according to the design in
+this project, is to calculate whether there is transfer of the control flow:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// set jump signal for control transfer instructions</span>
+<span class="k">assign</span> <span class="n">ctrl_pc_jump_target</span> <span class="o">=</span>
+    <span class="n">opcode</span> <span class="o">==</span> <span class="no">`JAL</span> <span class="o">?</span> <span class="n">pc</span> <span class="o">+</span> <span class="n">$signed</span><span class="p">({{</span><span class="mh">11</span><span class="p">{</span><span class="n">jal_offset</span><span class="p">[</span><span class="mh">20</span><span class="p">]}},</span> <span class="n">jal_offset</span><span class="p">})</span> <span class="o">:</span>
+    <span class="n">opcode</span> <span class="o">==</span> <span class="no">`JALR</span> <span class="o">?</span> <span class="n">op1</span> <span class="o">+</span> <span class="n">$signed</span><span class="p">({{</span><span class="mh">20</span><span class="p">{</span><span class="n">jalr_offset</span><span class="p">[</span><span class="mh">11</span><span class="p">]}},</span> <span class="n">jalr_offset</span><span class="p">})</span> <span class="o">:</span>
+    <span class="n">opcode</span> <span class="o">==</span> <span class="no">`BXX</span> <span class="o">?</span> <span class="n">pc</span> <span class="o">+</span> <span class="n">$signed</span><span class="p">({{</span><span class="mh">19</span><span class="p">{</span><span class="n">b_offset</span><span class="p">[</span><span class="mh">12</span><span class="p">]}},</span> <span class="n">b_offset</span><span class="p">})</span> <span class="o">:</span> <span class="p">&#39;</span><span class="n">bx</span><span class="p">;</span>
+<span class="k">assign</span> <span class="n">ctrl_jump</span> <span class="o">=</span> <span class="p">(</span><span class="o">!</span><span class="n">ctrl_skip_next_reg</span><span class="p">)</span> <span class="o">&amp;&amp;</span>
+    <span class="p">(</span><span class="n">opcode</span> <span class="o">==</span> <span class="no">`JAL</span> <span class="o">?</span> <span class="mh">1</span> <span class="o">:</span>
+    <span class="n">opcode</span> <span class="o">==</span> <span class="no">`JALR</span> <span class="o">?</span> <span class="mh">1</span> <span class="o">:</span>
+    <span class="n">opcode</span> <span class="o">==</span> <span class="no">`BXX</span> <span class="o">?</span>
+        <span class="p">(</span><span class="n">funct3</span><span class="p">[</span><span class="mh">2</span><span class="o">:</span><span class="mh">1</span><span class="p">]</span> <span class="o">==</span> <span class="mh">0</span> <span class="o">?</span> <span class="p">((</span><span class="n">op1</span> <span class="o">==</span> <span class="n">op2</span><span class="p">)</span> <span class="o">^</span> <span class="p">(</span><span class="n">funct3</span><span class="p">[</span><span class="mh">0</span><span class="p">]))</span> <span class="o">:</span> <span class="c1">// BEQ &amp; BNE</span>
+         <span class="p">(</span><span class="n">funct3</span><span class="p">[</span><span class="mh">1</span><span class="p">]</span> <span class="o">==</span> <span class="mh">0</span> <span class="o">?</span>
+              <span class="p">((</span><span class="n">$signed</span><span class="p">(</span><span class="n">op1</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">$signed</span><span class="p">(</span><span class="n">op2</span><span class="p">))</span> <span class="o">^</span> <span class="p">(</span><span class="n">funct3</span><span class="p">[</span><span class="mh">0</span><span class="p">]))</span> <span class="o">:</span> <span class="c1">// BLT &amp; BGE</span>
+              <span class="p">((</span><span class="n">op1</span> <span class="o">&lt;</span> <span class="n">op2</span><span class="p">)</span> <span class="o">^</span> <span class="p">(</span><span class="n">funct3</span><span class="p">[</span><span class="mh">0</span><span class="p">]))))</span> <span class="o">:</span> <span class="c1">// BLTU &amp; BGEU</span>
+              <span class="mh">0</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>The shown combinational logics implements the control signal that determines
+whether the processor should move its program counter to a different location
+other than the next instruction (<code class="docutils literal notranslate"><span class="pre">PC</span></code> + 4).  <code class="docutils literal notranslate"><span class="pre">ctrl_jump</span></code> signals 1 if the
+processor needs to “jump” to other places, which could be caused by branching
+(e.g. <code class="docutils literal notranslate"><span class="pre">BNE</span></code>), or function calls (e.g. <code class="docutils literal notranslate"><span class="pre">JAL</span></code>). These control signals will
+connect to the logic that fetches the instruction and advances the PC. We’ll
+revisit this part later.</p>
+<p>Finally, at the end of each cycle, the decoder should already prepare the
+decoded information of the instruction, which is stored in SystemVerilog
+registers (<code class="docutils literal notranslate"><span class="pre">logic</span></code> is the same as <code class="docutils literal notranslate"><span class="pre">reg</span></code> in this context, essentially flip-flops) so they can be used as the inputs in the next cycle of
+the subsequent stage:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">op1_reg</span><span class="p">,</span>    <span class="c1">// op1 for ALU</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">op2_reg</span><span class="p">,</span>    <span class="c1">// op2 for ALU</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">rd_reg</span><span class="p">,</span>      <span class="c1">// destination general register for writeback</span>
+<span class="c1">// ...</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">tmp_reg</span><span class="p">,</span>    <span class="c1">// keeps some additional value that skips ALU</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">pc_reg</span><span class="p">,</span>     <span class="c1">// pass on the instruction address</span>
+<span class="c1">// ...</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">2</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">ctrl_alu_func_reg</span><span class="p">,</span> <span class="c1">// ALU function selection</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="n">ctrl_alu_sign_ext_reg</span><span class="p">,</span> <span class="c1">//  ALU sign extension flag</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="n">ctrl_nop_reg</span><span class="p">,</span> <span class="c1">// if the current instruction should be treated as a no-op</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="n">ctrl_wb_reg</span><span class="p">,</span> <span class="c1">// if the instruction needs to write back to a register (use rd_reg in WB stage)</span>
+<span class="c1">// ...</span>
+<span class="k">output</span> <span class="kt">logic</span> <span class="p">[</span><span class="mh">4</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">ctrl_mem_reg</span><span class="p">,</span> <span class="c1">// if the instruction needs to access memory (MEM stage)</span>
+<span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">ctrl_pc_jump_target</span><span class="p">,</span> <span class="c1">// PC target (only valid if ctrl_jump = 1)</span>
+<span class="k">output</span> <span class="n">ctrl_jump</span><span class="p">,</span> <span class="c1">// if there is a (non-trap) control flow transfer</span>
+<span class="c1">// ...</span>
+<span class="c1">// (see core.sv for the complete implementation)</span>
+<span class="c1">// (here we just show one logic path that could prepare the value</span>
+<span class="c1">// for `op1_reg`)</span>
+                <span class="no">`XXXI</span><span class="o">:</span> <span class="k">begin</span>
+                    <span class="n">op1_reg</span> <span class="o">&lt;=</span> <span class="n">op1</span><span class="p">;</span>
+                    <span class="n">op2_reg</span> <span class="o">&lt;=</span> <span class="n">xxxi</span><span class="p">;</span>
+                    <span class="n">exc_reg</span> <span class="o">&lt;=</span> <span class="n">exc</span><span class="p">;</span>
+                    <span class="n">ctrl_alu_func_reg</span> <span class="o">&lt;=</span> <span class="n">funct3</span><span class="p">;</span>
+                    <span class="n">ctrl_alu_sign_ext_reg</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="n">funct3</span> <span class="o">==</span> <span class="no">`FSRX</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="n">inst</span><span class="p">[</span><span class="mh">30</span><span class="p">];</span>
+                    <span class="n">ctrl_wb_reg</span> <span class="o">&lt;=</span> <span class="mh">1</span><span class="p">;</span>
+                    <span class="n">ctrl_wb_csr_reg</span> <span class="o">&lt;=</span> <span class="mh">0</span><span class="p">;</span>
+                    <span class="n">ctrl_mem_reg</span> <span class="o">&lt;=</span> <span class="mh">0</span><span class="p">;</span>
+                <span class="k">end</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
 </div>
 <div class="section" id="executor-all-about-computing">
 <h2>Executor: All About “Computing”<a class="headerlink" href="#executor-all-about-computing" title="Permalink to this headline">¶</a></h2>

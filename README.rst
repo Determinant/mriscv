@@ -87,7 +87,7 @@ Examples
   ``ENABLE_SDL=1`` and use ``-v`` if want to test keyboard interrupts, press
   Esc to quit the UI)
 - Rust video test: ``make clean; env ENABLE_SDL=1 make sim; ./sim -vl apps/mriscv-rs/video.bin=0x100000``
-- Rust Snake game: ``./sim -vl apps/mriscv-rs/snake.bin=0x100000``
+- Rust Snake game: ``make clean; env ENABLE_SDL=1 make sim; ./sim -vl apps/mriscv-rs/snake.bin=0x100000``
 
 .. image:: https://raw.githubusercontent.com/Determinant/mriscv/main/apps/mriscv-rs/snake.gif
    :scale: 100%

@@ -236,16 +236,16 @@ module decoder(
     output logic [31:0] pc_reg,     // pass on the instruction address
     output logic [5:0] exc_reg,     // exceptions
 
-    output logic [2:0] ctrl_alu_func_reg,
-    output logic ctrl_alu_sign_ext_reg,
-    output logic ctrl_nop_reg,
-    output logic ctrl_wb_reg,
-    output logic ctrl_wb_csr_reg,
-    output logic ctrl_mret_reg,
-    output logic ctrl_wfi_reg,
-    output logic [4:0] ctrl_mem_reg,
-    output [31:0] ctrl_pc_jump_target,
-    output ctrl_jump,
+    output logic [2:0] ctrl_alu_func_reg, // ALU function selection
+    output logic ctrl_alu_sign_ext_reg, //  ALU sign extension flag
+    output logic ctrl_nop_reg, // if the current instruction should be treated as a no-op
+    output logic ctrl_wb_reg, // if the instruction needs to write back to a register (use rd_reg in WB stage)
+    output logic ctrl_wb_csr_reg, // if the instruction needs to write back to a CSR register
+    output logic ctrl_mret_reg, // if the instruction is MRET (return from handling a trap)
+    output logic ctrl_wfi_reg, // if the instruction is WFI (which will stall the processor until a trap occurs)
+    output logic [4:0] ctrl_mem_reg, // if the instruction needs to access memory (MEM stage)
+    output [31:0] ctrl_pc_jump_target, // PC target (only valid if ctrl_jump = 1)
+    output ctrl_jump, // if there is a (non-trap) control flow transfer
     output ctrl_decoder_stall
 );
     logic ctrl_skip_next_reg;
