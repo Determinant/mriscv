@@ -487,40 +487,46 @@ by our core implementation:</p>
 <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">icache_addr</span><span class="p">,</span>
 <span class="c1">// request flag, having the level of 1 will trigger a request</span>
 <span class="c1">// of 4-byte data at the address given by `icache_addr` when</span>
-<span class="c1">// the i-cache is in `idle` state, and it should enter a `pending`</span>
-<span class="c1">// state which ignores the inputs from the processor and prepare</span>
-<span class="c1">// the data in `icache_data`</span>
+<span class="c1">// the i-cache is in `idle` state, and it should enter `pending`</span>
+<span class="c1">// state in the *next* cycle, which ignores the inputs from the</span>
+<span class="c1">// processor and prepare the data in `icache_data`</span>
 <span class="k">output</span> <span class="n">icache_req</span><span class="p">,</span>
 <span class="k">input</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">icache_data</span><span class="p">,</span>
 <span class="c1">// ready flag, should be set to 1 when the i-cache is in</span>
 <span class="c1">// `pending` state and has stabilized the valid value in</span>
-<span class="c1">// `icache_data`. In the same cycle of setting the ready flag,</span>
-<span class="c1">// it should go back to the `idle` state. When the i-cache is</span>
-<span class="c1">// in `idle` state at the beginning of a cycle, it sets</span>
+<span class="c1">// `icache_data`. Then it should go back to `idle` in the *next*</span>
+<span class="c1">// cycle. Whenever the i-cache is in `idle` state, it sets</span>
 <span class="c1">// `icache_rdy` to 0.</span>
 <span class="k">input</span> <span class="n">icache_rdy</span><span class="p">,</span>
 <span class="c1">// ...</span>
 </pre></div>
 </div>
-<p>Here, <code class="docutils literal notranslate"><span class="pre">icache_addr</span></code> indicates the physical address of the in-memory word (32-bit
-integer) the processor wants to fetch next, <code class="docutils literal notranslate"><span class="pre">icache_req</span></code> flag is maintain at
-1 (level-triggered) if a read is requested. When the request flag is 1 and the
-i-cache is in <code class="docutils literal notranslate"><span class="pre">idle</span></code>, it first sets <code class="docutils literal notranslate"><span class="pre">icache_rdy</span></code> flag to 0 and enter the
-<code class="docutils literal notranslate"><span class="pre">pending</span></code> state for the next cycle.  When the word data is stable and ready
-in <code class="docutils literal notranslate"><span class="pre">icache_data</span></code> wires, i-cache sets <code class="docutils literal notranslate"><span class="pre">icache_rdy</span></code> to 1 and goes back to
-<code class="docutils literal notranslate"><span class="pre">idle</span></code> state. Thus, it takes at least 1 cycle and
-may take <em>more</em> cycles for the fetching to finish, and our processor
-accounts for this correctly. The diagram below shows four continuous reads that
-take 1 cycle, followed by a single read that takes 3 cycles:</p>
+<p>Here, <code class="docutils literal notranslate"><span class="pre">icache_addr</span></code> indicates the physical address of the in-memory word
+(32-bit integer) the processor wants to fetch next. <code class="docutils literal notranslate"><span class="pre">icache_req</span></code> flag is
+maintained at 1 (level-triggered) if a read is requested. When the request flag
+is 1 and the i-cache is in <code class="docutils literal notranslate"><span class="pre">idle</span></code>, it enters <code class="docutils literal notranslate"><span class="pre">pending</span></code> state in the <em>next</em>
+cycle.  When the word data is stable and ready in <code class="docutils literal notranslate"><span class="pre">icache_data</span></code> wires,
+i-cache sets <code class="docutils literal notranslate"><span class="pre">icache_rdy</span></code> to 1. Then it goes back to <code class="docutils literal notranslate"><span class="pre">idle</span></code> state in the
+<em>next</em> cycle. Whenever the i-cache is in <code class="docutils literal notranslate"><span class="pre">idle</span></code> state, it maintains <code class="docutils literal notranslate"><span class="pre">icache_rdy</span></code>
+at 0.  Thus, it takes at least 1 cycle and may take <em>more</em> cycles to finish
+fetching, and our processor accounts for this correctly. The diagram
+below shows four continuous reads where each takes 1 cycle, followed by a single read
+that takes 3 cycles:</p>
 <a class="reference internal image-reference" href="_images/i-cache.svg"><img alt="_images/i-cache.svg" class="align-center" src="_images/i-cache.svg" width="100%" /></a>
 <p>To make the entire SoC design runs on
 FPGA, readers need to plug in their own cache implementation and memory
 controller interface (e.g. some DDR IP core generated by commercial tools such as
-Xilinx Vivado) as the i-cache, according to this simple interface. While this
-allows flexibility in interesting use cases, in this repo, we just emulate
-cache and memory all together with a few lines of code in <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code> to
-demonstrate the usage and keep our code base minimal and clean.</p>
-<p>To set the PC correctly, <code class="docutils literal notranslate"><span class="pre">fetcher</span></code> uses a mux to account for three cases:</p>
+Xilinx Vivado) for the i-cache, according to this simple interface. While the
+cache interface allows flexibility in interesting use cases, in this repo, we
+just emulate i-cache with a few lines of code in <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code> to demonstrate the
+usage and keep our code base minimal and clean (we also use the same implementation
+for d-cache that is soon discussed). In our cache/memory simulation, it by default
+has a latency of 1 cycle for all access, whereas one can add in extra latency to
+simulate more realistic memory access, by calling the
+<code class="docutils literal notranslate"><span class="pre">schedule_next_icache_rdy()</span></code> (or <code class="docutils literal notranslate"><span class="pre">schedule_next_dcache_rdy()</span></code> for d-cache)
+method of the <code class="docutils literal notranslate"><span class="pre">SimulatedRAM</span></code> object.</p>
+<p>To automate the program counter correctly, <code class="docutils literal notranslate"><span class="pre">fetcher</span></code> uses a mux to consider
+the following three cases:</p>
 <ul class="simple">
 <li><p>normal advances of PC: PC + 4 (as each instruction is 4-byte word in RV32I);</p></li>
 <li><p>control flow transfers by some previous instruction: <code class="docutils literal notranslate"><span class="pre">ctrl_jump</span></code> and <code class="docutils literal notranslate"><span class="pre">pc_jump_target</span></code> inputs;</p></li>
@@ -542,19 +548,20 @@ demonstrate the usage and keep our code base minimal and clean.</p>
 state change at the end of an instruction. There are two kinds of state changes:</p>
 <ul class="simple">
 <li><p>internal: the change of general/special registers specified by the ISA</p></li>
-<li><p>external: the change made to main memory locations, usually byte/half word/word-addressed</p></li>
+<li><p>external: the change made to main memory locations, addressed at some byte-level granularity</p></li>
 </ul>
 <p>For RISC-V, the external state change can only be done via memory store
-instructions. Like instruction cache, there is a dedicated processor cache,
+instructions. Like instruction cache, there is a dedicated in-processor cache,
 <em>data cache</em> (“d-cache”) that is used for caching data accessed by the memory loads/stores.</p>
-<p>This style of distinguishing storage of instruction from data is usually called
-<em>Havard architecture</em>, whereas <em>von Neumann architecture</em> treats instructions
-and data the same way (“programs are also data”). For modern computer systems,
-however, the model is more like a hybrid version of both kinds: most
-micro-architectures have separate i-cache and d-cache for better performance
-due to the different access pattern for each kind, while programs they support
-do not have such distinction (both instructions and data are stored in the unified memory space).</p>
-<p>Our d-cache interface is very similar to the i-cache:</p>
+<p>This style of distinguishing the storage of instructions from the data they
+work on is usually called <em>Havard architecture</em>, whereas <em>von Neumann
+architecture</em> treats instructions and data the same way (“programs are also
+data”). For modern computer systems, however, the model is more like a hybrid
+version of both: most micro-architectures have separate i-cache and
+d-cache for better performance due to the naturally different access patterns of each
+kind, while the programs they execute do not have such distinction (both
+instructions and data are managed in the same, unified memory space).</p>
+<p>Our d-cache interface is very similar to i-cache’s:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
 <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_addr</span><span class="p">,</span>
 <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_wdata</span><span class="p">,</span>
@@ -566,21 +573,21 @@ do not have such distinction (both instructions and data are stored in the unifi
 <span class="c1">// ...</span>
 </pre></div>
 </div>
-<p>It has the following differences:</p>
+<p>, with the following differences:</p>
 <ul class="simple">
 <li><p>unlike the read-only i-cache, d-cache can be in either read or write state,
-so <code class="docutils literal notranslate"><span class="pre">dcache_wr</span></code> is used as the flag and <code class="docutils literal notranslate"><span class="pre">dcache_wdata</span></code> is used as the
+so <code class="docutils literal notranslate"><span class="pre">dcache_wr</span></code> is added as the flag and <code class="docutils literal notranslate"><span class="pre">dcache_wdata</span></code> is added as the
 value for writes;</p></li>
-<li><p>all instructions are of the same length, but RV32I allows manipulating data
-with different byte-widths (bytes: 1, half-words: 2, words: 4), so
-<code class="docutils literal notranslate"><span class="pre">dcache_ws</span></code> is used to indicate the width: 0 for bytes, 1 for half-words
+<li><p>although all instructions are of the same length, RV32I allows manipulating data
+with different widths (bytes, half-words and words), so
+<code class="docutils literal notranslate"><span class="pre">dcache_ws</span></code> is required to indicate the width: 0 for bytes, 1 for half-words
 and 2 for words.</p></li>
 </ul>
-<p>The operational logic for d-cache is similar to i-cache. It is also a
+<p>The operational logic for d-cache is similar to that for i-cache. It is also a
 request-based protocol and the data are placed in the lower bits for sizes
 smaller than a word.</p>
-<p>The resulting value after the memory stage is either the passed-on value from execution stage,
-or the value loaded from the memory:</p>
+<p>The result after memory stage is either the passed-on value from execution stage,
+or the value just loaded from the memory:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
 <span class="kt">wire</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">res_mem</span> <span class="o">=</span>
     <span class="n">dcache_ws</span> <span class="o">==</span> <span class="mh">2</span><span class="mb">&#39;b00</span> <span class="o">?</span> <span class="p">{{</span><span class="mh">24</span><span class="p">{</span><span class="n">sgn</span> <span class="o">?</span> <span class="n">rdata</span><span class="p">[</span><span class="mh">7</span><span class="p">]</span> <span class="o">:</span> <span class="mh">1</span><span class="mb">&#39;b0</span><span class="p">}},</span> <span class="n">rdata</span><span class="p">[</span><span class="mh">7</span><span class="o">:</span><span class="mh">0</span><span class="p">]}</span> <span class="o">:</span> <span class="c1">// LB/LBU</span>
@@ -590,8 +597,8 @@ or the value loaded from the memory:</p>
 <span class="c1">// ...</span>
 </pre></div>
 </div>
-<p>At last, the write-back stage is fairly simple in its logic, as most of it is
-already taken care of in the <code class="docutils literal notranslate"><span class="pre">register_file</span></code> module. It just wires the result
+<p>At last, the write-back stage is fairly simple in its logic, as most of it has
+already been taken care of in <code class="docutils literal notranslate"><span class="pre">register_file</span></code> module. It just wires the result
 to the destination register:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
 <span class="k">assign</span> <span class="n">reg_waddr</span> <span class="o">=</span> <span class="n">rd</span><span class="p">;</span>
