@@ -78,6 +78,14 @@ Build
   - add rv32i toolchain: ``rustup target add riscv32i-unknown-none-elf``
   - build examples: ``make -C ./apps/mriscv-rs``
 
+Tutorial
+--------
+
+If you're interested in the code, how the whole thing works together, or
+buliding a RISC-V system like this from scratch, checkout the tutorial_.
+
+.. _tutorial: https://determinant.github.io/mriscv/
+
 Examples
 --------
 
@@ -91,14 +99,6 @@ Examples
 
 .. image:: https://raw.githubusercontent.com/Determinant/mriscv/main/apps/mriscv-rs/snake.gif
    :scale: 100%
-
-Tutorial
---------
-
-If you're interested in buliding a RISC-V system like this from scratch,
-checkout here_.
-
-.. _here: https://determinant.github.io/mriscv/
 
 Memory Map
 ----------
