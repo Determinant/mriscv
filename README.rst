@@ -72,10 +72,10 @@ Build
 - ``cd`` to repo root.
 - Build RTL simulator: ``make`` (console-only) or ``env ENABLE_SDL=1 make sim`` (with video and keyboard)
 - Build C apps: ``make -C ./apps``
-- Build Rust apps:
+- Build Rust apps (no need to run "Build C apps" if you just want to try out Rust apps):
 
   - install rustup: https://rustup.rs/
-  - add rv32i toolchain: ``rustup target add riscv32i-unknown-none-elf``
+  - add rv32i toolchain: ``rustup target add riscv32i-unknown-none-elf && cargo install cargo-binutils && rustup component add llvm-tools-preview``
   - build examples: ``make -C ./apps/mriscv-rs``
 
 Tutorial

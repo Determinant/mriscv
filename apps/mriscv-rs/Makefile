@@ -1,8 +1,8 @@
 .PHONY: all clean cargo
 
-GCC_TOOLCHAIN = ../rv32i/
-OBJDUMP = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objdump
-OBJCOPY = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objcopy
+#GCC_TOOLCHAIN = ../rv32i/
+#OBJDUMP = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objdump
+#OBJCOPY = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objcopy
 
 OBJS :=	\
 	hello.txt hello.bin hello.elf \
@@ -21,7 +21,9 @@ cargo:
 	cp target/riscv32i-unknown-none-elf/release/examples/$(basename $@) $@
 
 %.txt: %.elf
-	$(OBJDUMP) -Mno-aliases -Mnumeric -dS $< > $@
+	cargo-objdump --release --example $(basename $@) -- -Mno-aliases -Mnumeric -dS > $@
+	#$(OBJDUMP) -Mno-aliases -Mnumeric -dS $< > $@
 
 %.bin: %.elf
-	$(OBJCOPY) -O binary -j .text -j .rodata $< $@
+	cargo-objcopy --release --example $(basename $@) -- -O binary -j .text -j .rodata $@
+	#$(OBJCOPY) -O binary -j .text -j .rodata $< $@
