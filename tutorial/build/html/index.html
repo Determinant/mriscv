@@ -649,7 +649,7 @@ to the destination register:</p>
 <p>Ideally, the automation seems to work, if we inject <em>independent</em> instructions
 from the left, and each stage takes exactly 1 cycle to complete. By these two
 assumptions, in each clock cycle, each stage will process exactly one
-instruction, sent it over to the next stage and it will take exactly 5
+instruction, send it over to the next stage and it will take exactly 5
 cycles for one instruction to finish the entire pipeline.</p>
 <p>Unfortunately, neither assumptions are always true:</p>
 <ol class="arabic simple">
@@ -658,11 +658,12 @@ a load instruction can write to register <code class="docutils literal notransla
 subsequent operation like <code class="docutils literal notranslate"><span class="pre">addi</span> <span class="pre">x2,</span> <span class="pre">x1,</span> <span class="pre">1</span></code>;</p></li>
 <li><p>each stage may take more than one cycle to complete. For example, both <code class="docutils literal notranslate"><span class="pre">fetcher</span></code> and
 <code class="docutils literal notranslate"><span class="pre">memory</span></code> stage can be <em>stalled</em> by cache misses, which waits for the memory to load/store
-the data. Memory access are several orders of magnitude slower than cache
-(e.g. 100 times) and cache could be hierarchical (an L1 cache miss could
-cause an acess to L2 cache, which cannot be done with a single cycle);</p></li>
+the data. Memory access is several orders of magnitude slower than cache
+(e.g. dozen to hundred times) and cache could be hierarchical (an L1 cache
+miss causes an access to L2 cache, which cannot be done within a single
+cycle);</p></li>
 <li><p>control flow transfer (or traps) can change the normal advancing behavior of
-PC and suddenly diverge it to some random location in the program, which
+PC and suddenly divert it to some random location in the program, which
 cannot be immediately predicted before fetching the next instruction. So in
 our design, when the decoder finds out such change to PC, it is already too
 late.</p></li>
@@ -670,32 +671,32 @@ late.</p></li>
 <p>We call these anomalies that violate the regular progress in the pipeline and
 potentially generate incorrect results <em>hazards</em>.
 The issue caused by data
-dependency is <em>data hazards</em>. Our design is an <em>in-order</em> pipeline where
+dependency is <em>data hazards</em>. Our design is <em>in-order</em> where
 instructions are pipelined respecting their natural order in
 the program (instead of being reordered in those out-of-order implementations
 such as scoreboard or Tomasulo), the typical data hazard for us is “read
 after write” (RAW, we don’t have WAR or WAW). An example for RAW was given in the first point
 of the above list. The second point could also be viewed as a kind of data hazards.
-Moreover, our processor is <em>scalar</em> (single stream of instructions and single
-stream of data), thus it does not have <em>structural hazards</em> as there are
-always sufficient hardware resources for each stage to process data (there can’t be
-multiple instructions trying to multiplex the same structure, like ALU, as in
-those <em>superscalar</em> processors). We do have <em>control hazards</em> as noted by the
-third point.</p>
-<p>Therefore, we use three classic techniques to tackle with the hazards:</p>
+Moreover, our processor is <em>scalar</em> (single stream of instructions and data),
+thus it does not have <em>structural hazards</em>, because there are always sufficient
+hardware resources for each stage to process data (there can’t be multiple
+instructions trying to multiplex the same structure, such as the ALU, as in some
+<em>superscalar</em> processors). We do have <em>control hazards</em> as noted by the third
+point.</p>
+<p>To get over with them, we use three classic techniques to tackle with the hazards:</p>
 <ul class="simple">
 <li><p>stalls: to generalize the idea and make our implementation clean, we allow
 each stage in the pipeline to raise a “stall signal”, which will temporarily
-pause the progress <em>before</em> this stage;</p></li>
+pause the progress <em>before</em> a stage which is also frozen;</p></li>
 <li><p>bubbles: to invalidate the instructions that should <em>not</em> have been injected into
 the pipeline due to the change of control flow, we mark the instructions in
-earlier stages effectively as “no-ops” (similar to the handling of NOP
+earlier stages effectively as “no-ops” (similar to the handling of a NOP
 instruction);</p></li>
-<li><p>forwarding: to address RAW issue, we need to forward the results from earlier
-instructions that are still in the pipeline to subsequent ones by adding muxes of
+<li><p>forwarding: to account for RAW, we forward the results from earlier
+instructions that are still in the pipeline to later ones by adding a mux to
 “shortcuts”, before the results are actually written back to the register file.</p></li>
 </ul>
-<p>For each stage, we have a stall signal input and an output such as:</p>
+<p>For each stage, we have a stall signal input and output:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
 <span class="c1">// whether this stage should be stalled</span>
 <span class="c1">// this is determined both by `ctrl_fetcher_stall` (directly)</span>
@@ -712,7 +713,7 @@ instructions that are still in the pipeline to subsequent ones by adding muxes o
 <span class="c1">// ...</span>
 </pre></div>
 </div>
-<p>Note that we also need to know whether the next stage is also stalled:
+<p>Note that we need to know whether the next stage is also stalled:
 <code class="docutils literal notranslate"><span class="pre">ctrl_next_stage_stall</span></code> wire is the <code class="docutils literal notranslate"><span class="pre">ctrl_stall</span></code> input used by the next
 stage, because for any two adjacent stages, if the current stage stalls:</p>
 <ul class="simple">
@@ -761,7 +762,7 @@ organized way:</p>
 </pre></div>
 </div>
 <p>In addition to the bubbles generated by stalls, <code class="docutils literal notranslate"><span class="pre">decoder</span></code> is the one other place that can
-generate bubble, when it hits a transfer of control flow. Due to its limited scenario, we can
+generate bubbles, when it hits a transfer of control flow. Due to its limited scenarios, we can
 use an internal register in <code class="docutils literal notranslate"><span class="pre">decoder</span></code> module to indicate whether it should skip the instruction
 that immediately comes after the current one:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
@@ -772,7 +773,11 @@ that immediately comes after the current one:</p>
               <span class="n">ctrl_trap</span> <span class="o">||</span>
               <span class="p">(</span><span class="n">opcode</span> <span class="o">==</span> <span class="no">`XXXI</span> <span class="o">&amp;&amp;</span> <span class="n">inst</span><span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">7</span><span class="p">]</span> <span class="o">==</span> <span class="mh">0</span><span class="p">)</span> <span class="o">||</span>
               <span class="n">opcode</span> <span class="o">==</span> <span class="no">`FEN</span><span class="p">;</span>
-
+<span class="c1">// ...</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">ctrl_reset</span><span class="p">)</span> <span class="k">begin</span>
+        <span class="n">ctrl_skip_next_reg</span> <span class="o">&lt;=</span> <span class="mh">0</span><span class="p">;</span>
+        <span class="n">ctrl_nop_reg</span> <span class="o">&lt;=</span> <span class="mh">1</span><span class="p">;</span>
+    <span class="k">end</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ctrl_stall</span><span class="p">)</span> <span class="k">begin</span>
 <span class="c1">// ...</span>
             <span class="n">ctrl_skip_next_reg</span> <span class="o">&lt;=</span> <span class="n">ctrl_jump</span><span class="p">;</span>
 <span class="c1">// ...</span>
@@ -783,8 +788,8 @@ that immediately comes after the current one:</p>
 exactly one bubble (an exception, however, due to its synchronous nature, will
 empty the entire pipeline as discussed later).  It is encouraged for the
 readers to read more materials about one important optimization that could be
-added to the code – <em>branch predictor</em>. The pipeline will then only suffer
-from at most one bubble if the prediction is incorrect.</p>
+added to the code – <em>branch predictor</em>. The pipeline will then suffer
+from at most one bubble only if the prediction is incorrect.</p>
 <p>As for forwarding, we know the entire pipeline so far only has one place to read
 general-purpose registers: <code class="docutils literal notranslate"><span class="pre">decoder</span></code> module, whose decoding reads at most two
 registers in just one cycle. Then we should look for all places after this
@@ -793,8 +798,8 @@ instruction there finally finishes the rest of the pipeline.</p>
 <ul>
 <li><p><code class="docutils literal notranslate"><span class="pre">executor</span></code>: an earlier instruction (1 stage ahead) now in execution could generate a new
 value to the destination register. We should forward <code class="docutils literal notranslate"><span class="pre">executor</span></code> result with
-bypassing wires (with no delay in cycle).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">memory</span></code>: an earlier instruction (2 stage ahead) now in memory stage could
+bypassing wires (no delay in cycles).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">memory</span></code>: an earlier instruction (2 stages ahead) now in its memory stage could
 be a load instruction that writes the value from cache/memory to the
 register. Unlike the <code class="docutils literal notranslate"><span class="pre">executor</span></code> case, <code class="docutils literal notranslate"><span class="pre">memory</span></code> may take one or more cycles
 to finish the load operation, so we may need to stall the <code class="docutils literal notranslate"><span class="pre">decoder</span></code> to wait for
@@ -816,10 +821,10 @@ the register value:</p>
 </pre></div>
 </div>
 </li>
-<li><p><code class="docutils literal notranslate"><span class="pre">writeback</span></code>: an earlier instruction (3 stage ahead) now in write-back stage could
+<li><p><code class="docutils literal notranslate"><span class="pre">writeback</span></code>: an earlier instruction (3 stages ahead) now in its write-back stage could
 be writing the same register that is needed by <code class="docutils literal notranslate"><span class="pre">decoder</span></code>. The sequential logic in
 <code class="docutils literal notranslate"><span class="pre">register_file</span></code> will only make the written value of register available in the <em>next</em>
-cycle, which is too late for the <code class="docutils literal notranslate"><span class="pre">decoder</span></code>. Therefore, we need to allow directly
+cycle, which is 1-cycle late for <code class="docutils literal notranslate"><span class="pre">decoder</span></code>. Therefore, we need to allow directly
 bypassing the extra cycle if the register is read in the same cycle:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
 <span class="k">assign</span> <span class="n">rdata1</span> <span class="o">=</span> <span class="n">writing</span> <span class="o">&amp;&amp;</span> <span class="n">waddr</span> <span class="o">==</span> <span class="n">raddr1</span> <span class="o">?</span> <span class="n">wdata</span> <span class="o">:</span> <span class="n">regs</span><span class="p">[</span><span class="n">raddr1</span><span class="p">];</span>
@@ -829,7 +834,7 @@ bypassing the extra cycle if the register is read in the same cycle:</p>
 </div>
 </li>
 </ul>
-<p>Overall, each forwarding path is a bundle of three signals:</p>
+<p>In summary, each forwarding path is a bundle of three kinds of signals:</p>
 <ul class="simple">
 <li><p>valid bit (1-bit): <code class="docutils literal notranslate"><span class="pre">ctrl_forward_valid_exec</span></code> and <code class="docutils literal notranslate"><span class="pre">ctrl_forward_valid_mem</span></code>,</p></li>
 <li><p>forwarded (bypassed) value (32-bit): <code class="docutils literal notranslate"><span class="pre">forward_data_exec</span></code> and <code class="docutils literal notranslate"><span class="pre">forward_data_mem</span></code>,</p></li>
@@ -837,7 +842,7 @@ bypassing the extra cycle if the register is read in the same cycle:</p>
 </ul>
 <p>An additional mux is added to each operand (<code class="docutils literal notranslate"><span class="pre">op1</span></code> and <code class="docutils literal notranslate"><span class="pre">op2</span></code>, as shown in the
 previous code snippet) to select the forwarded value if it is valid and
-matches the register in question.</p>
+also matches the register in question.</p>
 </div>
 <div class="section" id="when-the-execution-gets-interrupted">
 <h3>When the Execution Gets Interrupted…<a class="headerlink" href="#when-the-execution-gets-interrupted" title="Permalink to this headline">¶</a></h3>
