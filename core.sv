@@ -130,7 +130,14 @@ module fetcher(
 
     input ctrl_clk,
     input ctrl_reset,
+
+    // whether this stage should be stalled
+    // this is determined both by `ctrl_fetcher_stall` (directly)
+    // and whether the subsequent stages are stalled (indirectly)
     input ctrl_stall,
+    // whether the next sage should be stalled:
+    // - yes: do *not* inject bubble to the input of next stage
+    // - no: inject a bubble to the next stage
     input ctrl_next_stage_stall,
     input ctrl_jump,
     input ctrl_trap,
@@ -145,6 +152,8 @@ module fetcher(
     output logic [31:0] pc_reg,
     output logic [5:0] exc_reg,
     output logic ctrl_nop_reg,
+    // whether this stage has a hazard that requires
+    // stalling itself and its previous stages.
     output ctrl_fetcher_stall
 );
     logic [31:0] pc;

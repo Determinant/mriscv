@@ -650,7 +650,225 @@ to the destination register:
 
 Hazards: Stalls, Bubbles and Forwarding
 --------------------------------------------------------
+Putting all stages together, we have a pipeline like this:
 
+::
+
+  [fetcher] => [decoder] => [executor] => [memory] => [writeback]
+           regs         regs          regs        regs
+  +cycles:  1            2             3           4              5
+
+Ideally, the automation seems to work, if we inject *independent* instructions
+from the left, and each stage takes exactly 1 cycle to complete. By these two
+assumptions, in each clock cycle, each stage will process exactly one
+instruction, sent it over to the next stage and it will take exactly 5
+cycles for one instruction to finish the entire pipeline.
+
+Unfortunately, neither assumptions are always true:
+
+1. instructions that are still in the pipeline can be mutually dependent. For example,
+   a load instruction can write to register ``x1`` whose value is immediately used in a 
+   subsequent operation like ``addi x2, x1, 1``;
+
+2. each stage may take more than one cycle to complete. For example, both ``fetcher`` and
+   ``memory`` stage can be *stalled* by cache misses, which waits for the memory to load/store
+   the data. Memory access are several orders of magnitude slower than cache
+   (e.g. 100 times) and cache could be hierarchical (an L1 cache miss could
+   cause an acess to L2 cache, which cannot be done with a single cycle);
+
+3. control flow transfer (or traps) can change the normal advancing behavior of
+   PC and suddenly diverge it to some random location in the program, which
+   cannot be immediately predicted before fetching the next instruction. So in
+   our design, when the decoder finds out such change to PC, it is already too
+   late.
+
+We call these anomalies that violate the regular progress in the pipeline and
+potentially generate incorrect results *hazards*.
+The issue caused by data
+dependency is *data hazards*. Our design is an *in-order* pipeline where
+instructions are pipelined respecting their natural order in
+the program (instead of being reordered in those out-of-order implementations
+such as scoreboard or Tomasulo), the typical data hazard for us is "read
+after write" (RAW, we don't have WAR or WAW). An example for RAW was given in the first point
+of the above list. The second point could also be viewed as a kind of data hazards.
+Moreover, our processor is *scalar* (single stream of instructions and single
+stream of data), thus it does not have *structural hazards* as there are
+always sufficient hardware resources for each stage to process data (there can't be
+multiple instructions trying to multiplex the same structure, like ALU, as in
+those *superscalar* processors). We do have *control hazards* as noted by the
+third point.
+
+Therefore, we use three classic techniques to tackle with the hazards:
+
+- stalls: to generalize the idea and make our implementation clean, we allow
+  each stage in the pipeline to raise a "stall signal", which will temporarily
+  pause the progress *before* this stage;
+
+- bubbles: to invalidate the instructions that should *not* have been injected into
+  the pipeline due to the change of control flow, we mark the instructions in
+  earlier stages effectively as "no-ops" (similar to the handling of NOP
+  instruction);
+
+- forwarding: to address RAW issue, we need to forward the results from earlier
+  instructions that are still in the pipeline to subsequent ones by adding muxes of
+  "shortcuts", before the results are actually written back to the register file.
+
+
+For each stage, we have a stall signal input and an output such as:
+
+.. code-block:: verilog
+
+  // ...
+  // whether this stage should be stalled
+  // this is determined both by `ctrl_fetcher_stall` (directly)
+  // and whether the subsequent stages are stalled (indirectly)
+  input ctrl_stall,
+  // whether the next sage should be stalled:
+  // - yes: do *not* inject bubble to the input of next stage
+  // - no: inject a bubble to the next stage
+  input ctrl_next_stage_stall,
+  // ...
+  // whether this stage has a hazard that requires
+  // stalling itself and its previous stages.
+  output ctrl_fetcher_stall
+  // ...
+
+Note that we also need to know whether the next stage is also stalled:
+``ctrl_next_stage_stall`` wire is the ``ctrl_stall`` input used by the next
+stage, because for any two adjacent stages, if the current stage stalls:
+
+- the next stage is not stalled, we need to ensure the current stage still
+  produces something valid, like a bubble at the end of this cycle, otherwise
+  some stale register values could still persist and there will be a "ghost"
+  instruction used by the next stage;
+
+- the next stage is also stalled, then no bubble is need.
+
+It is simply done by the following check in all stages:
+
+.. code-block:: verilog
+
+  // ...
+          if (!ctrl_next_stage_stall) // insert a bubble
+              ctrl_nop_reg <= 1;
+  // ...
+
+Overall, the stall signal ``ctrl_stall`` for all stages can be calculated in an
+organized way:
+
+.. code-block:: verilog
+
+  // ...
+  wire ctrl_fetcher_stall_in = ctrl_fetcher_stall ||
+                               ctrl_decoder_stall ||
+                               ctrl_executor_stall ||
+                               ctrl_mem_stall ||
+                               ctrl_writeback_stall ||
+                               ctrl_wfi_stall;
+
+  wire ctrl_decoder_stall_in = ctrl_decoder_stall ||
+                               ctrl_fetcher_stall || // because jumps could change PC
+                               ctrl_executor_stall ||
+                               ctrl_mem_stall ||
+                               ctrl_writeback_stall ||
+                               ctrl_wfi_stall;
+
+  wire ctrl_executor_stall_in = ctrl_executor_stall ||
+                                ctrl_mem_stall ||
+                                ctrl_writeback_stall ||
+                                ctrl_wfi_stall;
+
+  wire ctrl_mem_stall_in = ctrl_mem_stall ||
+                           ctrl_writeback_stall ||
+                           ctrl_wfi_stall;
+
+  wire ctrl_wb_stall_in = ctrl_writeback_stall ||
+                          ctrl_wfi_stall;
+  // ...
+
+In addition to the bubbles generated by stalls, ``decoder`` is the one other place that can
+generate bubble, when it hits a transfer of control flow. Due to its limited scenario, we can
+use an internal register in ``decoder`` module to indicate whether it should skip the instruction
+that immediately comes after the current one:
+
+.. code-block:: verilog
+
+  // ...
+  logic ctrl_skip_next_reg;
+  // ...
+  wire is_nop = ctrl_nop ||
+                ctrl_skip_next_reg ||
+                ctrl_trap ||
+                (opcode == `XXXI && inst[31:7] == 0) ||
+                opcode == `FEN;
+
+  // ...
+              ctrl_skip_next_reg <= ctrl_jump;
+  // ...
+              ctrl_skip_next_reg <= ctrl_trap;
+
+Thus in our pipeline, a transfer of control flow (or an interrupt) will create
+exactly one bubble (an exception, however, due to its synchronous nature, will
+empty the entire pipeline as discussed later).  It is encouraged for the
+readers to read more materials about one important optimization that could be
+added to the code -- *branch predictor*. The pipeline will then only suffer
+from at most one bubble if the prediction is incorrect.
+
+As for forwarding, we know the entire pipeline so far only has one place to read
+general-purpose registers: ``decoder`` module, whose decoding reads at most two
+registers in just one cycle. Then we should look for all places after this
+stage where the value of a register could be changed eventually if the
+instruction there finally finishes the rest of the pipeline.
+
+- ``executor``: an earlier instruction (1 stage ahead) now in execution could generate a new
+  value to the destination register. We should forward ``executor`` result with
+  bypassing wires (with no delay in cycle).
+
+- ``memory``: an earlier instruction (2 stage ahead) now in memory stage could
+  be a load instruction that writes the value from cache/memory to the
+  register. Unlike the ``executor`` case, ``memory`` may take one or more cycles
+  to finish the load operation, so we may need to stall the ``decoder`` to wait for
+  the register value:
+
+  .. code-block:: verilog
+
+    // ...
+    assign ctrl_decoder_stall = ctrl_forward_mload_stall &&
+                                (((opcode == `XXXI ||
+                                  opcode == `XXX ||
+                                  opcode == `LX ||
+                                  opcode == `SX ||
+                                  opcode == `JALR ||
+                                  opcode == `BXX ||
+                                  opcode == `SYS) && ctrl_forward_rd_exec == rs1) ||
+                                ((opcode == `XXX ||
+                                  opcode == `SX ||
+                                  opcode == `JALR ||
+                                  opcode == `BXX) && ctrl_forward_rd_exec == rs2));
+    // ...
+
+- ``writeback``: an earlier instruction (3 stage ahead) now in write-back stage could
+  be writing the same register that is needed by ``decoder``. The sequential logic in
+  ``register_file`` will only make the written value of register available in the *next*
+  cycle, which is too late for the ``decoder``. Therefore, we need to allow directly
+  bypassing the extra cycle if the register is read in the same cycle:
+
+  .. code-block:: verilog
+
+    // ...
+    assign rdata1 = writing && waddr == raddr1 ? wdata : regs[raddr1];
+    assign rdata2 = writing && waddr == raddr2 ? wdata : regs[raddr2];
+    // ...
+
+Overall, each forwarding path is a bundle of three signals:
+
+- valid bit (1-bit): ``ctrl_forward_valid_exec`` and ``ctrl_forward_valid_mem``,
+- forwarded (bypassed) value (32-bit): ``forward_data_exec`` and ``forward_data_mem``,
+- destination register (5-bit): ``ctrl_forward_rd_exec`` and ``ctrl_forward_rd_mem``.
+
+An additional mux is added to each operand (``op1`` and ``op2``, as shown in the
+previous code snippet) to select the forwarded value if it is valid and
+matches the register in question.
 
 When the Execution Gets Interrupted...
 --------------------------------------
