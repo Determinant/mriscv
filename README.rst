@@ -20,6 +20,11 @@ Features
   and is able to run realistic C program directly compiled by gcc and Rust
   program built by cargo/rustc.
 
+- Self-contained: this repo contains a minimal system that works out of the box
+  and allows building your own apps that run on the system. The only dependencies are
+  Verilator (available on major Linux distributions) and SDL2 (optional, see `Build`_).
+  Makefiles will automatically pull the standard RISC-V toolchain to build binaries.
+
 - It currently supports:
 
   - Modularized five-stage pipeline: one can clearly see five stages and their
