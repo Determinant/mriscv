@@ -63,8 +63,10 @@ It Currently Does NOT Have...
 Requirements
 ------------
 
-- Verilator (required)
-- SDL2 (optional, for video and keyboard input as interrupts, enabled by ``ENABLE_SDL=1``)
+- Verilator_ (required): ``sudo apt-get install verilator`` (on Ubuntu).
+- SDL2 (optional, for video and keyboard input as interrupts, enabled by ``ENABLE_SDL=1``): ``sudo apt-get install libsdl2-dev`` (on Ubuntu).
+
+.. _Verilator: https://verilator.org/guide/latest/install.html
 
 Build
 -----
