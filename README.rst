@@ -9,6 +9,11 @@ Features
   core code base tiny. Written cleanly from scratch and good for pedagogical
   purpose.
 
+  - core.sv: 1.2k lines
+  - csr.sv: 182 lines
+  - sim.cpp: 423 lines
+
+
 - Practical approach: compared to other prevailing hobby/course projects, this
   project, despite its simplicity, still strives for a more "end-to-end" kind
   of approach.  The core RTL is implemented with synthesizable SystemVerilog
