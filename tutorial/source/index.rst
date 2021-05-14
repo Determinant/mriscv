@@ -36,9 +36,5 @@ The whole repo is simply divided into three parts:
 This tutorial is organized in two parts: the implementation of the processor
 core with Verilog and the building of the final system/applications.
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
- 
 .. include:: processor.rst
 .. include:: system.rst

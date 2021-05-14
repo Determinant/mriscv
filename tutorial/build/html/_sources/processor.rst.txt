@@ -634,7 +634,7 @@ or the value just loaded from the memory:
   wire [31:0] res = (ctrl_mem[1:0] == 2'b10) ? res_mem : res_alu;
   // ...
 
-At last, the write-back stage is fairly simple in its logic, as most of it has
+At last, ``writeback`` stage is fairly simple in its logic, as most of it has
 already been taken care of in ``register_file`` module. It just wires the result
 to the destination register:
 
@@ -852,7 +852,7 @@ instruction there finally finishes the rest of the pipeline.
                                   opcode == `BXX) && ctrl_forward_rd_exec == rs2));
     // ...
 
-- ``writeback``: an earlier instruction (3 stages ahead) now in its write-back stage could
+- ``writeback``: an earlier instruction (3 stages ahead) now in its ``writeback`` stage could
   be writing the same register that is needed by ``decoder``. The sequential logic in
   ``register_file`` will only make the written value of register available in the *next*
   cycle, which is 1-cycle late for ``decoder``. Therefore, we need to allow directly
@@ -878,3 +878,145 @@ also matches the register in question.
 When the Execution Gets Interrupted...
 --------------------------------------
 
+To make our processor practically "usable", we need to have some minimum
+support for exceptions and interrupts. For this, we should consult the second
+volume of RISC-V official specification: *Privileged Architecture*. RISC-V
+names three modes: user, supervisor and machine. An operating system needs to
+execute its code in supervisor mode to have necessary protections such as
+virtual memory address translation. For example, Linux kernel requires a
+support for both supervisor and machine mode for its targeted RISC-V platforms.
+Since we only plan to run bare-metal applications directly on the processor for
+the purpose of this project, we only need to support the machine mode and many
+flags can be configured properly according to the specification, without
+implementing their unnecessary semantics.
+
+RISC-V uses Control and Status Registers (CSRs) to support these privileged
+features that more or less change the behavior of the processor's normal execution.
+We would like to support the following major CSRs required by a realistic machine-mode processor:
+
+- ``mstatus``: status register;
+- ``misa``: ISA register, a must-have CSR
+  as it contains the basic information such as bit width and the supported
+  RISC-V extensions. We just encode ``RV32I`` (32-bit, "I") in it;
+- ``mie``: interrupt-enable register, a global switch that enables/disables interrupts;
+- ``mtvec``: interrupt vector register, which operates in two modes (determined by the lowest 2 bits):
+
+  - ``BASE`` is the value of ``mtvec`` after replacing the last two bits with 0;
+  - "direct" mode: ``BASE`` is the entry point of the interrupt handler (PC is set to ``BASE``);
+  - "vectored" mode: ``BASE`` is the base address for an interrupt vector table
+    (PC is set to ``BASE + 4 * <cause>``);
+
+- ``mscratch``: scratch register for machine-mode programs to store any temporary values;
+- ``mepc``: exception program counter, which saves the original PC before the trap;
+- ``mcause``: trap cause, where the highest bit indicates whether the trap is an interrupt (=1);
+- ``mtval``: stores the additional information for a trap (not written by our processor);
+- ``mip``: interrupt-pending register, which indicates all active interrupts if the corresponding bit is set;
+- ``mhartid``: Hart ID (for hardware thread support, see the specification), a
+  must-have CSR and always contains 0 in our case;
+
+- ``mtime``, ``mtimecmp``: hardware timer (current and threshold value to trigger a *timer interrupt*);
+- ``msip``: software interrupt pending-register, which can be set by a program to trigger a *software interrupt*.
+
+The last three CSRs (``mtime``, ``mtimecmp``, ``msip``) are memory-mapped
+(discussed in the second part of this tutorial) and thus implemented in ``memory``
+stage of ``core.sv``, while the rest are all implemented by ``csr.sv``.
+
+CSRs are similar in behavior to general-purpose registers (``x0``--``x31``),
+but require more care, because ``csr*`` instructions swap or read CSRs
+atomically. Fortunately, since they can only be accessed by CSR instructions,
+there is no additional data hazards for other non-CSR instructions. We just
+need to make sure CSRs are forwarded as for general-purpose registers and only
+written back in ``writeback`` stage for their atomicity.
+
+There are two kinds of traps in RISC-V:
+
+- *exceptions* are raised internally by the current execution stream due to
+  illegal instructions or context and thus the instruction in question should
+  not be effective when the exception is raised; they are
+  *synchronous*, meaning the processor should drop the possible state change
+  caused by the instruction and stop executing any
+  further instructions before it is resolved;
+
+- *interrupts* are raised by some events or conditions external to the current
+  execution stream, such as timers, I/O or the running program; they are thus
+  *asynchronous* and do not necessarily need immediate/precise divergence from
+  the execution (although it is always good to have a "low-latency" interrupt
+  controller that diverts the execution timely), and the execution flow
+  being interrupted is still valid.
+
+
+With these CSRs, we can now implement the trap logic to handle both exceptions
+and interrupts in ``writeback`` stage: 
+
+- change PC of ``fetcher`` for the next cycle according to ``mtvec``;
+- mark all instructions in previous stages as NOPs (clear the pipeline);
+- push a special flag to ``writeback`` stage, so it writes back all CSR changes
+  (induced by the exception) in the next cycle.
+
+The stage also has a ``ctrl_trap`` output signal that enables the trap handling
+in ``csr`` module (``csr.sv``):
+
+- it is guaranteed by the pipeline that no read/write is on-going and all
+  previous writes are visible;
+
+- the value of ``mstatus.MIE`` is copied into ``mcause.MPIE``, and then ``mstatus.MIE`` is
+  cleared, effectively disabling interrupts;
+
+- the current pc is copied into the mepc register.
+
+Then, when the program exits a trap by ``mret`` instruction, the PC calculation
+can be unified like:
+
+.. code-block:: verilog
+
+  // ...
+  wire is_exc = (!ctrl_nop) && exc != 0;
+  // ...
+  wire is_trap = is_exc || ((ctrl_mxie & ctrl_mxip) != 0 && ctrl_mie);
+  // ...
+  assign csr_raddr = is_trap ? `CSR_MTVEC : `CSR_MEPC;
+  // ...
+  assign ctrl_pc_exc_target = is_trap ? (csr_rdata[0] ? (mtvec_base + {26'b0, cause, 2'b0}) : mtvec_base) :
+                                        (csr_rdata + 4);
+
+We also signal both ``ctrl_trap`` = 1 and ``ctrl_mret`` = 1 to ``csr``:
+
+.. code-block:: verilog
+
+  csr csr_reg(
+  // ...
+      .ctrl_trap(ctrl_trap),
+  // ...
+      .ctrl_mret((!ctrl_nop_mem_o) && ctrl_mret_mem_o),
+  // ...
+  );
+
+, so that ``csr`` recovers the required CSRs by  
+
+- set ``mstatus.mie`` to ``mstatus.mpie``, which restores the interrupt-enable flag
+- clear ``mstatus.mpie``
+
+Overall, our processor supports all standard interrupts:
+
+- timer interrupts
+- software interrupts
+- external interrupts
+
+The external interrupts are level-triggered by the ``irq`` pin to the processor:
+
+.. code-block:: verilog
+
+  module core (
+      input clock,
+      input reset,
+      input irq,
+  // ...
+
+For a more advanced implementation, you should consider adding an "interrupt
+controller" that supports more sophisticated management of interrupts. For
+example, interrupts can be buffered so new interrupts that go off during the
+handling of a trap won't be dropped or ignored.  The RISC-V organization is
+also working on a `specification`_ for a *Core-Local Interrupt Controller*
+(CLIC).
+
+.. _specification: https://github.com/riscv/riscv-fast-interrupt

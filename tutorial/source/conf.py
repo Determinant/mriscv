@@ -51,3 +51,13 @@ html_theme = 'alabaster'
 # so a file named "default.css" will overwrite the builtin "default.css".
 
 html_static_path = ['_static/custom.css']
+html_sidebars = {
+    '**': [
+        'localtoc.html',
+        'searchbox.html']
+}
+html_theme_options = {
+    'sidebar_width': '280px',
+    'page_width': '1000px',
+    'fixed_sidebar': True
+}

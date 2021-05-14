@@ -21,9 +21,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
 
   </head><body>
-  
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Make a RISC-V processor</a><ul>
+<li><a class="reference internal" href="#what-makes-a-processor">What Makes a Processor?</a></li>
+<li><a class="reference internal" href="#register-transfer-level-abstraction">Register Transfer Level Abstraction</a></li>
+<li><a class="reference internal" href="#instruction-pipelining">Instruction Pipelining</a></li>
+<li><a class="reference internal" href="#decoder-parsing-an-instruction">Decoder: Parsing an Instruction</a></li>
+<li><a class="reference internal" href="#executor-all-about-computing">Executor: All About “Computing”</a></li>
+<li><a class="reference internal" href="#fetcher-automation-and-loop">Fetcher: Automation and Loop</a></li>
+<li><a class="reference internal" href="#memory-access-writeback">Memory Access &amp; Writeback</a></li>
+<li><a class="reference internal" href="#hazards-stalls-bubbles-and-forwarding">Hazards: Stalls, Bubbles and Forwarding</a></li>
+<li><a class="reference internal" href="#when-the-execution-gets-interrupted">When the Execution Gets Interrupted…</a></li>
+</ul>
+</li>
+</ul>
 
-    <div class="document">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
       <div class="documentwrapper">
         <div class="bodywrapper">
           
@@ -597,7 +626,7 @@ or the value just loaded from the memory:</p>
 <span class="c1">// ...</span>
 </pre></div>
 </div>
-<p>At last, the write-back stage is fairly simple in its logic, as most of it has
+<p>At last, <code class="docutils literal notranslate"><span class="pre">writeback</span></code> stage is fairly simple in its logic, as most of it has
 already been taken care of in <code class="docutils literal notranslate"><span class="pre">register_file</span></code> module. It just wires the result
 to the destination register:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
@@ -792,7 +821,7 @@ the register value:</p>
 </pre></div>
 </div>
 </li>
-<li><p><code class="docutils literal notranslate"><span class="pre">writeback</span></code>: an earlier instruction (3 stages ahead) now in its write-back stage could
+<li><p><code class="docutils literal notranslate"><span class="pre">writeback</span></code>: an earlier instruction (3 stages ahead) now in its <code class="docutils literal notranslate"><span class="pre">writeback</span></code> stage could
 be writing the same register that is needed by <code class="docutils literal notranslate"><span class="pre">decoder</span></code>. The sequential logic in
 <code class="docutils literal notranslate"><span class="pre">register_file</span></code> will only make the written value of register available in the <em>next</em>
 cycle, which is 1-cycle late for <code class="docutils literal notranslate"><span class="pre">decoder</span></code>. Therefore, we need to allow directly
@@ -817,6 +846,133 @@ also matches the register in question.</p>
 </div>
 <div class="section" id="when-the-execution-gets-interrupted">
 <h2>When the Execution Gets Interrupted…<a class="headerlink" href="#when-the-execution-gets-interrupted" title="Permalink to this headline">¶</a></h2>
+<p>To make our processor practically “usable”, we need to have some minimum
+support for exceptions and interrupts. For this, we should consult the second
+volume of RISC-V official specification: <em>Privileged Architecture</em>. RISC-V
+names three modes: user, supervisor and machine. An operating system needs to
+execute its code in supervisor mode to have necessary protections such as
+virtual memory address translation. For example, Linux kernel requires a
+support for both supervisor and machine mode for its targeted RISC-V platforms.
+Since we only plan to run bare-metal applications directly on the processor for
+the purpose of this project, we only need to support the machine mode and many
+flags can be configured properly according to the specification, without
+implementing their unnecessary semantics.</p>
+<p>RISC-V uses Control and Status Registers (CSRs) to support these privileged
+features that more or less change the behavior of the processor’s normal execution.
+We would like to support the following major CSRs required by a realistic machine-mode processor:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">mstatus</span></code>: status register;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">misa</span></code>: ISA register, a must-have CSR
+as it contains the basic information such as bit width and the supported
+RISC-V extensions. We just encode <code class="docutils literal notranslate"><span class="pre">RV32I</span></code> (32-bit, “I”) in it;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mie</span></code>: interrupt-enable register, a global switch that enables/disables interrupts;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mtvec</span></code>: interrupt vector register, which operates in two modes (determined by the lowest 2 bits):</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">BASE</span></code> is the value of <code class="docutils literal notranslate"><span class="pre">mtvec</span></code> after replacing the last two bits with 0;</p></li>
+<li><p>“direct” mode: <code class="docutils literal notranslate"><span class="pre">BASE</span></code> is the entry point of the interrupt handler (PC is set to <code class="docutils literal notranslate"><span class="pre">BASE</span></code>);</p></li>
+<li><p>“vectored” mode: <code class="docutils literal notranslate"><span class="pre">BASE</span></code> is the base address for an interrupt vector table
+(PC is set to <code class="docutils literal notranslate"><span class="pre">BASE</span> <span class="pre">+</span> <span class="pre">4</span> <span class="pre">*</span> <span class="pre">&lt;cause&gt;</span></code>);</p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mscratch</span></code>: scratch register for machine-mode programs to store any temporary values;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mepc</span></code>: exception program counter, which saves the original PC before the trap;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mcause</span></code>: trap cause, where the highest bit indicates whether the trap is an interrupt (=1);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mtval</span></code>: stores the additional information for a trap (not written by our processor);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mip</span></code>: interrupt-pending register, which indicates all active interrupts if the corresponding bit is set;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mhartid</span></code>: Hart ID (for hardware thread support, see the specification), a
+must-have CSR and always contains 0 in our case;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mtime</span></code>, <code class="docutils literal notranslate"><span class="pre">mtimecmp</span></code>: hardware timer (current and threshold value to trigger a <em>timer interrupt</em>);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">msip</span></code>: software interrupt pending-register, which can be set by a program to trigger a <em>software interrupt</em>.</p></li>
+</ul>
+<p>The last three CSRs (<code class="docutils literal notranslate"><span class="pre">mtime</span></code>, <code class="docutils literal notranslate"><span class="pre">mtimecmp</span></code>, <code class="docutils literal notranslate"><span class="pre">msip</span></code>) are memory-mapped
+(discussed in the second part of this tutorial) and thus implemented in <code class="docutils literal notranslate"><span class="pre">memory</span></code>
+stage of <code class="docutils literal notranslate"><span class="pre">core.sv</span></code>, while the rest are all implemented by <code class="docutils literal notranslate"><span class="pre">csr.sv</span></code>.</p>
+<p>CSRs are similar in behavior to general-purpose registers (<code class="docutils literal notranslate"><span class="pre">x0</span></code>–<code class="docutils literal notranslate"><span class="pre">x31</span></code>),
+but require more care, because <code class="docutils literal notranslate"><span class="pre">csr*</span></code> instructions swap or read CSRs
+atomically. Fortunately, since they can only be accessed by CSR instructions,
+there is no additional data hazards for other non-CSR instructions. We just
+need to make sure CSRs are forwarded as for general-purpose registers and only
+written back in <code class="docutils literal notranslate"><span class="pre">writeback</span></code> stage for their atomicity.</p>
+<p>There are two kinds of traps in RISC-V:</p>
+<ul class="simple">
+<li><p><em>exceptions</em> are raised internally by the current execution stream due to
+illegal instructions or context and thus the instruction in question should
+not be effective when the exception is raised; they are
+<em>synchronous</em>, meaning the processor should drop the possible state change
+caused by the instruction and stop executing any
+further instructions before it is resolved;</p></li>
+<li><p><em>interrupts</em> are raised by some events or conditions external to the current
+execution stream, such as timers, I/O or the running program; they are thus
+<em>asynchronous</em> and do not necessarily need immediate/precise divergence from
+the execution (although it is always good to have a “low-latency” interrupt
+controller that diverts the execution timely), and the execution flow
+being interrupted is still valid.</p></li>
+</ul>
+<p>With these CSRs, we can now implement the trap logic to handle both exceptions
+and interrupts in <code class="docutils literal notranslate"><span class="pre">writeback</span></code> stage:</p>
+<ul class="simple">
+<li><p>change PC of <code class="docutils literal notranslate"><span class="pre">fetcher</span></code> for the next cycle according to <code class="docutils literal notranslate"><span class="pre">mtvec</span></code>;</p></li>
+<li><p>mark all instructions in previous stages as NOPs (clear the pipeline);</p></li>
+<li><p>push a special flag to <code class="docutils literal notranslate"><span class="pre">writeback</span></code> stage, so it writes back all CSR changes
+(induced by the exception) in the next cycle.</p></li>
+</ul>
+<p>The stage also has a <code class="docutils literal notranslate"><span class="pre">ctrl_trap</span></code> output signal that enables the trap handling
+in <code class="docutils literal notranslate"><span class="pre">csr</span></code> module (<code class="docutils literal notranslate"><span class="pre">csr.sv</span></code>):</p>
+<ul class="simple">
+<li><p>it is guaranteed by the pipeline that no read/write is on-going and all
+previous writes are visible;</p></li>
+<li><p>the value of <code class="docutils literal notranslate"><span class="pre">mstatus.MIE</span></code> is copied into <code class="docutils literal notranslate"><span class="pre">mcause.MPIE</span></code>, and then <code class="docutils literal notranslate"><span class="pre">mstatus.MIE</span></code> is
+cleared, effectively disabling interrupts;</p></li>
+<li><p>the current pc is copied into the mepc register.</p></li>
+</ul>
+<p>Then, when the program exits a trap by <code class="docutils literal notranslate"><span class="pre">mret</span></code> instruction, the PC calculation
+can be unified like:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="kt">wire</span> <span class="n">is_exc</span> <span class="o">=</span> <span class="p">(</span><span class="o">!</span><span class="n">ctrl_nop</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="n">exc</span> <span class="o">!=</span> <span class="mh">0</span><span class="p">;</span>
+<span class="c1">// ...</span>
+<span class="kt">wire</span> <span class="n">is_trap</span> <span class="o">=</span> <span class="n">is_exc</span> <span class="o">||</span> <span class="p">((</span><span class="n">ctrl_mxie</span> <span class="o">&amp;</span> <span class="n">ctrl_mxip</span><span class="p">)</span> <span class="o">!=</span> <span class="mh">0</span> <span class="o">&amp;&amp;</span> <span class="n">ctrl_mie</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="k">assign</span> <span class="n">csr_raddr</span> <span class="o">=</span> <span class="n">is_trap</span> <span class="o">?</span> <span class="no">`CSR_MTVEC</span> <span class="o">:</span> <span class="no">`CSR_MEPC</span><span class="p">;</span>
+<span class="c1">// ...</span>
+<span class="k">assign</span> <span class="n">ctrl_pc_exc_target</span> <span class="o">=</span> <span class="n">is_trap</span> <span class="o">?</span> <span class="p">(</span><span class="n">csr_rdata</span><span class="p">[</span><span class="mh">0</span><span class="p">]</span> <span class="o">?</span> <span class="p">(</span><span class="n">mtvec_base</span> <span class="o">+</span> <span class="p">{</span><span class="mh">26</span><span class="mb">&#39;b0</span><span class="p">,</span> <span class="n">cause</span><span class="p">,</span> <span class="mh">2</span><span class="mb">&#39;b0</span><span class="p">})</span> <span class="o">:</span> <span class="n">mtvec_base</span><span class="p">)</span> <span class="o">:</span>
+                                      <span class="p">(</span><span class="n">csr_rdata</span> <span class="o">+</span> <span class="mh">4</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>We also signal both <code class="docutils literal notranslate"><span class="pre">ctrl_trap</span></code> = 1 and <code class="docutils literal notranslate"><span class="pre">ctrl_mret</span></code> = 1 to <code class="docutils literal notranslate"><span class="pre">csr</span></code>:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="n">csr</span> <span class="n">csr_reg</span><span class="p">(</span>
+<span class="c1">// ...</span>
+    <span class="p">.</span><span class="n">ctrl_trap</span><span class="p">(</span><span class="n">ctrl_trap</span><span class="p">),</span>
+<span class="c1">// ...</span>
+    <span class="p">.</span><span class="n">ctrl_mret</span><span class="p">((</span><span class="o">!</span><span class="n">ctrl_nop_mem_o</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="n">ctrl_mret_mem_o</span><span class="p">),</span>
+<span class="c1">// ...</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>, so that <code class="docutils literal notranslate"><span class="pre">csr</span></code> recovers the required CSRs by</p>
+<ul class="simple">
+<li><p>set <code class="docutils literal notranslate"><span class="pre">mstatus.mie</span></code> to <code class="docutils literal notranslate"><span class="pre">mstatus.mpie</span></code>, which restores the interrupt-enable flag</p></li>
+<li><p>clear <code class="docutils literal notranslate"><span class="pre">mstatus.mpie</span></code></p></li>
+</ul>
+<p>Overall, our processor supports all standard interrupts:</p>
+<ul class="simple">
+<li><p>timer interrupts</p></li>
+<li><p>software interrupts</p></li>
+<li><p>external interrupts</p></li>
+</ul>
+<p>The external interrupts are level-triggered by the <code class="docutils literal notranslate"><span class="pre">irq</span></code> pin to the processor:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">core</span> <span class="p">(</span>
+    <span class="k">input</span> <span class="n">clock</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">reset</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">irq</span><span class="p">,</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
+<p>For a more advanced implementation, you should consider adding an “interrupt
+controller” that supports more sophisticated management of interrupts. For
+example, interrupts can be buffered so new interrupts that go off during the
+handling of a trap won’t be dropped or ignored.  The RISC-V organization is
+also working on a <a class="reference external" href="https://github.com/riscv/riscv-fast-interrupt">specification</a> for a <em>Core-Local Interrupt Controller</em>
+(CLIC).</p>
 </div>
 </div>
 
@@ -825,48 +981,8 @@ also matches the register in question.</p>
           
         </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="index.html">mriscv</a></h1>
-
-
-
-
-
-
-
-
-<h3>Navigation</h3>
-
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="index.html">Documentation overview</a><ul>
-  </ul></li>
-</ul>
-</div>
-<div id="searchbox" style="display: none" role="search">
-  <h3 id="searchlabel">Quick search</h3>
-    <div class="searchformwrapper">
-    <form class="search" action="search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</div>
-<script>$('#searchbox').show(0);</script>
-
-
-
-
-
-
-
-
-        </div>
-      </div>
-      <div class="clearer"></div>
-    </div>
+    <div class="clearer"></div>
+  </div>
     <div class="footer">
       &copy;2021, Ted Yin.
       
