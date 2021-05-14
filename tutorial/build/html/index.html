@@ -89,14 +89,14 @@ keyboard input. The applications are built with standard gcc/Rust RISC-V
 toolchains and directly run on the processor.</p>
 <p>The whole repo is simply divided into three parts:</p>
 <ul class="simple">
-<li><p>Processor core implementation in Verilog: <code class="docutils literal notranslate"><span class="pre">core.sv</span></code> (1.2K loc) and
+<li><p>Processor core implementation in SystemVerilog: <code class="docutils literal notranslate"><span class="pre">core.sv</span></code> (1.2K loc) and
 <code class="docutils literal notranslate"><span class="pre">csr.sv</span></code> (182 loc).</p></li>
 <li><p>System emulator: <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code> (423 loc).</p></li>
 <li><p>Example applications that directly runs on <code class="docutils literal notranslate"><span class="pre">sim</span></code>: <code class="docutils literal notranslate"><span class="pre">apps/*.c</span></code> and
 <code class="docutils literal notranslate"><span class="pre">apps/mriscv-rs/examples/*.rs</span></code>.</p></li>
 </ul>
 <p>This tutorial is organized in two parts: the implementation of the processor
-core with Verilog and the building of the final system/applications.</p>
+core with SystemVerilog and the building of the final system/applications.</p>
 <div class="section" id="make-a-risc-v-processor">
 <h2>Make a RISC-V processor<a class="headerlink" href="#make-a-risc-v-processor" title="Permalink to this headline">¶</a></h2>
 <div class="section" id="what-makes-a-processor">
