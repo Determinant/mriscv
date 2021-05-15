@@ -42,7 +42,6 @@
 </li>
 <li><a class="reference internal" href="#emulate-a-realistic-soc-environment">Emulate a Realistic SoC environment</a><ul>
 <li><a class="reference internal" href="#no-longer-a-toy-starting-up-a-compiled-program">No Longer a “Toy”: Starting up a compiled program</a></li>
-<li><a class="reference internal" href="#memory-mapped-registers">Memory-Mapped Registers</a></li>
 <li><a class="reference internal" href="#priting-to-the-console">Priting to the Console</a></li>
 <li><a class="reference internal" href="#timer-event-and-a-basic-library">Timer, Event and a Basic Library</a></li>
 <li><a class="reference internal" href="#a-snake-game">A Snake Game</a></li>
@@ -1015,11 +1014,284 @@ also working on a <a class="reference external" href="https://github.com/riscv/r
 </div>
 <div class="section" id="emulate-a-realistic-soc-environment">
 <h2>Emulate a Realistic SoC environment<a class="headerlink" href="#emulate-a-realistic-soc-environment" title="Permalink to this headline">¶</a></h2>
+<p>Ok, now we have a RISC-V processor core implemented in synthesizable
+SystemVerilog. But it is still just an RTL design that takes the following pins
+to operate normally:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="k">module</span> <span class="n">core</span> <span class="p">(</span>
+    <span class="k">input</span> <span class="n">clock</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">reset</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">irq</span><span class="p">,</span>
+
+    <span class="c1">// i-cache communication</span>
+    <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">icache_addr</span><span class="p">,</span>
+    <span class="k">output</span> <span class="n">icache_req</span><span class="p">,</span>
+    <span class="k">input</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">icache_data</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">icache_rdy</span><span class="p">,</span>
+
+    <span class="c1">// d-cache communication</span>
+    <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_addr</span><span class="p">,</span>
+    <span class="k">output</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_wdata</span><span class="p">,</span>
+    <span class="k">output</span> <span class="p">[</span><span class="mh">1</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_ws</span><span class="p">,</span>
+    <span class="k">output</span> <span class="n">dcache_req</span><span class="p">,</span>
+    <span class="k">output</span> <span class="n">dcache_wr</span><span class="p">,</span>
+    <span class="k">input</span> <span class="p">[</span><span class="mh">31</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span> <span class="n">dcache_rdata</span><span class="p">,</span>
+    <span class="k">input</span> <span class="n">dcache_rdy</span>
+<span class="p">);</span>
+</pre></div>
+</div>
+<p>There are many possible ways to use the implementation. You can interface with
+some existing cache implementation for i-cache/d-cache and then design
+some wrapping peripheral circuits to signal <code class="docutils literal notranslate"><span class="pre">clock</span></code>, <code class="docutils literal notranslate"><span class="pre">reset</span></code> and <code class="docutils literal notranslate"><span class="pre">irq</span></code>
+pin (could be grounded if no external interrupts are needed) properly.  It is
+also possible to make it “semi-hosted” by some commercial tool so that
+cache/memory can be emulated on our host computer, while the core runs entirely on an
+FPGA.  Here we use <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code> as an example, which emulates both the core
+logic and peripherals on the computer, with the help of Verilator.  Verilator
+can compile the SystemVerilog code into standalone C++ code with optimized,
+parallelized emulation and thus gives a usable RISC-V computer emulated in
+real-time. In this part, we’ll quickly walk through the important ingredients
+that make the processor run in a mini setup, ending up with a demo program
+that implements a “Snake” (or “Blockade”) video game that is playable with
+inputs from the keyboard of the host computer.</p>
 <div class="section" id="no-longer-a-toy-starting-up-a-compiled-program">
 <h3>No Longer a “Toy”: Starting up a compiled program<a class="headerlink" href="#no-longer-a-toy-starting-up-a-compiled-program" title="Permalink to this headline">¶</a></h3>
+<p>From the pins required by <code class="docutils literal notranslate"><span class="pre">core</span></code> module, it is obvious that we need to
+emulate the following in our C++ code:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">clock</span></code>: the clock signal for the processor;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reset</span></code>: the reset pulse required upon startup of the processor (to
+initialize some of its internal registers);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">irq</span></code>: the Interrupt Request (IRQ) line to notify the processor of some
+external I/O; the actual type of interrupt events is usually adhoc to the
+system; a System-on-Chip (SoC) has its own definitions for inputs from its
+GPIOs, I2C/SPI or Serial/USB ports, whereas a desktop computer has this part implemented
+outside the CPU, on the motherboard, managed by its Basic Input/Output System
+(BIOS) chip (and BIOS also has the duty to initialize the processor when
+powered on);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">icache_*</span></code>: instruction cache, we can just emulate this together with
+<code class="docutils literal notranslate"><span class="pre">dcache_*</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dcache_*</span></code>: data cache, we can simply emulate the entire memory that allows some
+configurable delay in response.</p></li>
+</ul>
+<p>In <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code>, we implement our entire SoC-like system in a <code class="docutils literal notranslate"><span class="pre">SoC</span></code> struct:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span> <span class="nc">SoC</span> <span class="p">{</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Vcore</span><span class="o">&gt;</span> <span class="n">core</span><span class="p">;</span>
+    <span class="n">SimulatedRAM</span> <span class="n">ram</span><span class="p">;</span>
+    <span class="c1">// ...</span>
+<span class="p">};</span>
+</pre></div>
 </div>
-<div class="section" id="memory-mapped-registers">
-<h3>Memory-Mapped Registers<a class="headerlink" href="#memory-mapped-registers" title="Permalink to this headline">¶</a></h3>
+<p>, where <code class="docutils literal notranslate"><span class="pre">Vcore</span></code> is the class generated from our <code class="docutils literal notranslate"><span class="pre">core</span></code> module by Verilator.</p>
+<p>Upon an emulation time tick, we emulate the memory clock cycle if the cpu clock is on its
+rising edge and also evaluate the core processor given its current pin levels:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span> <span class="nf">tick</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">main_time</span><span class="o">++</span><span class="p">;</span>
+        <span class="n">ram</span><span class="p">.</span><span class="n">eval_posedge</span><span class="p">();</span>
+    <span class="p">}</span>
+    <span class="n">core</span><span class="o">-&gt;</span><span class="n">eval</span><span class="p">();</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Each clock cycle of the processor is done by two emulation ticks, so we
+alternate the <code class="docutils literal notranslate"><span class="pre">core-&gt;clock</span></code> pin between 0 and 1 when we advance the emulation
+in the main emulation loop:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (in struct Soc)</span>
+    <span class="kt">void</span> <span class="nf">next_tick</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span> <span class="o">=</span> <span class="o">!</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span><span class="p">;</span>
+        <span class="n">tick</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="c1">// ... (in struct Soc)</span>
+<span class="c1">// emulation main loop</span>
+<span class="k">while</span> <span class="p">(</span><span class="o">!</span><span class="n">Verilated</span><span class="o">::</span><span class="n">gotFinish</span><span class="p">())</span> <span class="p">{</span>
+    <span class="n">soc</span><span class="p">.</span><span class="n">next_tick</span><span class="p">();</span>
+<span class="c1">// ...</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>A hardware reset is needed before we start the main loop:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (in struct Soc)</span>
+    <span class="kt">void</span> <span class="nf">reset</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">reset</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="n">tick</span><span class="p">();</span>
+
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="n">tick</span><span class="p">();</span>
+
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">reset</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="c1">// ... (in struct Soc)</span>
+<span class="c1">// reset before the main loop</span>
+<span class="n">soc</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span>
+</pre></div>
+</div>
+<p>This gives us a runnable processor. But it is not usable until we load a
+program and let it start running from the entry point of the program.
+Real-world processors (micro-controllers) define which address the program counter
+should be at upon a hardware reset (aka. <em>reset vector</em>), and it is usually in
+the specification of the chip product. For example, Intel uses <code class="docutils literal notranslate"><span class="pre">0xfffffff0</span></code>
+for all its x86 processors when they reset in the “real-mode” (the real-mode is
+introduced for backward compatibility to the earliest
+8086 chip, of later products). In <code class="docutils literal notranslate"><span class="pre">core.sv</span></code>, our reset vector is at <code class="docutils literal notranslate"><span class="pre">0x100000</span></code>:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="cp">`define PC_RESET        32&#39;h00100000</span>
+<span class="c1">// ...</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ctrl_reset</span><span class="p">)</span> <span class="k">begin</span>
+            <span class="no">`ifdef</span> <span class="n">PIPELINE_DEBUG</span>
+                <span class="nb">$display</span><span class="p">(</span><span class="s">&quot;[%0t] reset pc&quot;</span><span class="p">,</span> <span class="nb">$time</span><span class="p">);</span>
+            <span class="no">`endif</span>
+            <span class="n">pc</span> <span class="o">&lt;=</span> <span class="no">`PC_RESET</span><span class="p">;</span> <span class="c1">// initialize PC</span>
+            <span class="n">ctrl_nop_reg</span> <span class="o">&lt;=</span> <span class="mh">1</span><span class="p">;</span>
+        <span class="k">end</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ctrl_stall</span><span class="p">)</span> <span class="k">begin</span>
+<span class="c1">// ...</span>
+</pre></div>
+</div>
+<p>Therefore, we need to load our program into memory at <code class="docutils literal notranslate"><span class="pre">0x100000</span></code>. The memory
+is emulated by <code class="docutils literal notranslate"><span class="pre">SimulatedRAM</span></code> class and we provide the emulator a way to load
+the content of a binary file to a specific memory location:</p>
+<div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="k">void</span> <span class="n">load_image_from_file</span><span class="p">(</span><span class="n">FILE</span> <span class="o">*</span><span class="n">img_file</span><span class="p">,</span> <span class="n">size_t</span> <span class="n">mem_off</span><span class="p">,</span> <span class="n">size_t</span> <span class="n">len</span> <span class="o">=</span> <span class="mh">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">len</span> <span class="o">==</span> <span class="mh">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">auto</span> <span class="n">old</span> <span class="o">=</span> <span class="n">ftell</span><span class="p">(</span><span class="n">img_file</span><span class="p">);</span>
+        <span class="n">fseek</span><span class="p">(</span><span class="n">img_file</span><span class="p">,</span> <span class="mh">0</span><span class="n">L</span><span class="p">,</span> <span class="n">SEEK_END</span><span class="p">);</span>
+        <span class="n">len</span> <span class="o">=</span> <span class="n">ftell</span><span class="p">(</span><span class="n">img_file</span><span class="p">);</span>
+        <span class="n">fseek</span><span class="p">(</span><span class="n">img_file</span><span class="p">,</span> <span class="n">old</span><span class="p">,</span> <span class="n">SEEK_SET</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">fread</span><span class="p">(</span><span class="o">&amp;</span><span class="n">memory</span><span class="p">[</span><span class="mh">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">mem_off</span><span class="p">,</span> <span class="mh">1</span><span class="p">,</span> <span class="n">len</span><span class="p">,</span> <span class="n">img_file</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>so that it is easy to load and run a program using the emulator:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">//</span> <span class="n">run</span> <span class="n">the</span> <span class="n">hello</span> <span class="n">world</span> <span class="n">program</span>
+<span class="o">./</span><span class="n">sim</span> <span class="o">-</span><span class="n">l</span> <span class="n">apps</span><span class="o">/</span><span class="n">hello</span><span class="o">.</span><span class="n">bin</span><span class="o">=</span><span class="mh">0x100000</span>
+</pre></div>
+</div>
+<p>So far we’ve figured out (and you should read the code in <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code>) how to let a processor load and run a
+program in its “raw” (machine code) form. Although one can write a program with
+pure machine code and it works in theory, as human beings, we would appreciate
+writing in a high-level language such as C/Rust, and compile the program down to
+the binary code (called “firmware”, or “image”) to be more efficient both in
+terms of our coding and the program’s execution. Let’s figure out how to get a
+standard gcc compiler (the Rust example is under <code class="docutils literal notranslate"><span class="pre">apps/mriscv-rs</span></code>, which shares the
+linker script with the C apps) to do the job for you, which may also
+help you develop more understanding in hardware/software interface.</p>
+<p>There’re mainly three keywords here: <em>toolchain</em>, <em>linkage</em> and <em>startup</em>. Assuming we’re working
+on a <em>host</em> computer with x86-64 CPU for this project, we need a compiler that
+runs on 64-bit x86 ISA, but outputs programs that run on 32-bit RISC-V processor.
+Compiling a program to its binary may need multiple tools (compiler,
+linker, binutils) in such a <em>cross-compilation</em> procedure, and the set of necessary
+tools is called a toolchain. In our <code class="docutils literal notranslate"><span class="pre">apps/</span></code> directory, you’ll find the use of a
+<code class="docutils literal notranslate"><span class="pre">RV32I</span></code> toolchain in <code class="docutils literal notranslate"><span class="pre">Makefile</span></code>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>GCC_TOOLCHAIN = ./rv32i/
+CC = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-gcc
+OBJDUMP = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objdump
+OBJCOPY = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-objcopy
+</pre></div>
+</div>
+<p>To compiler a C program into our targeted platform, we run the cross-compiler:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>// ... in apps/Makefile
+    $(CC) -march=rv32i -mabi=ilp32 -O2 -nostartfiles -Wl,-Tlink.x -g -o $@ startup.s $&lt; mriscv.o
+</pre></div>
+</div>
+<p>You may have already noticed that there are some options/flags added to the command
+line. This is because gcc by default compiles programs that run on an operating
+system such as Linux, whose execution environment is largely different from
+those bare-metal programs that run directly on the processor (yes, the
+operating system can also be viewed as a bare-metal program). Typically, we
+need to do the following for an embedded (bare-metal) environment:</p>
+<ul>
+<li><p>specify the correct architecture feature sets: <code class="docutils literal notranslate"><span class="pre">rv32i</span></code>, because we don’t support
+many other extensions defined by the RISC-V specification. For example,
+multiplications can be emulated by other arithmetic operations generated by
+the compiler, so we can still use multiplication in our C code.</p></li>
+<li><p>specify the correct ABI: <code class="docutils literal notranslate"><span class="pre">ilp32</span></code>, which defines the integer model (such as
+the chosen integer for <code class="docutils literal notranslate"><span class="pre">int</span></code>, <code class="docutils literal notranslate"><span class="pre">unsigned</span></code>);</p></li>
+<li><p>remove start files and use custom startup code: use <code class="docutils literal notranslate"><span class="pre">-nostartfiles</span></code> to
+remove the “prologue” code the compiler generates (because it is for running
+on an OS), where the <code class="docutils literal notranslate"><span class="pre">main()</span></code> function is invoked, and add in
+our customized implementation to guide the execution flow to the main
+function correctly: (in <code class="docutils literal notranslate"><span class="pre">startup.s</span></code>)</p>
+<div class="highlight-asm notranslate"><div class="highlight"><pre><span></span><span class="na">.global</span> <span class="no">_start</span>
+<span class="na">.text</span>
+
+<span class="nl">_start:</span>
+    <span class="nf">lui</span> <span class="no">sp</span><span class="p">,</span> <span class="mi">0x220</span>
+    <span class="nf">call</span> <span class="no">main</span>
+    <span class="nf">nop</span>
+    <span class="nf">nop</span>
+    <span class="nf">nop</span>
+    <span class="nf">nop</span>
+    <span class="nf">nop</span>
+<span class="nl">halt:</span>
+    <span class="nf">beq</span> <span class="no">x0</span><span class="p">,</span> <span class="no">x0</span><span class="p">,</span> <span class="no">halt</span>
+</pre></div>
+</div>
+<p>The global <code class="docutils literal notranslate"><span class="pre">_start</span></code> symbol is the entry point that the linker will
+use to determine where the program should really start from.
+We also add some NOPs to make it easier for debugging the processor as they
+clear the pipeline, and let the processor enter an infinite loop (<code class="docutils literal notranslate"><span class="pre">halt</span></code>) at
+the end of the program to guard the execution (so it won’t continue into
+an invalid portion of memory). The startup code also sets up the stack pointer
+(<code class="docutils literal notranslate"><span class="pre">sp</span></code>) to the beginning of the stack (we use <code class="docutils literal notranslate"><span class="pre">0x220000</span></code>, as our RAM
+is <code class="docutils literal notranslate"><span class="pre">0x200000</span></code>-<code class="docutils literal notranslate"><span class="pre">0x21ffff</span></code>, inclusive).</p>
+</li>
+<li><p>configure linkage correctly: because our program runs directly on the
+processor and accesses physical memory (rather than virtual memory) without
+an OS, we need to let the linker know how to finally arrange our binary code
+and how to utilize memory space. We first define the memory layout
+on our platform (<code class="docutils literal notranslate"><span class="pre">memory.x</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">MEMORY</span>
+<span class="p">{</span>
+    <span class="n">FLASH</span> <span class="p">:</span> <span class="n">ORIGIN</span> <span class="o">=</span> <span class="mh">0x00100000</span><span class="p">,</span> <span class="n">LENGTH</span> <span class="o">=</span> <span class="mi">1</span><span class="n">M</span>
+    <span class="n">RAM</span> <span class="p">:</span> <span class="n">ORIGIN</span> <span class="o">=</span> <span class="mh">0x00200000</span><span class="p">,</span> <span class="n">LENGTH</span> <span class="o">=</span> <span class="mi">32</span><span class="n">M</span>
+<span class="p">}</span>
+<span class="o">//</span> <span class="o">...</span>
+</pre></div>
+</div>
+<p>and then the sections in the binary (<code class="docutils literal notranslate"><span class="pre">link.x</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">INCLUDE</span> <span class="n">memory</span><span class="o">.</span><span class="n">x</span>
+<span class="n">SECTIONS</span>
+<span class="p">{</span>
+    <span class="o">.</span>  <span class="o">=</span> <span class="n">ORIGIN</span><span class="p">(</span><span class="n">FLASH</span><span class="p">);</span> <span class="o">/*</span> <span class="n">load</span> <span class="kn">from</span> <span class="nn">the</span> <span class="n">beginning</span> <span class="n">of</span> <span class="n">the</span> <span class="n">flash</span> <span class="o">*/</span>
+    <span class="o">.</span><span class="n">text</span> <span class="p">:</span> <span class="p">{</span>
+        <span class="n">KEEP</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">text</span><span class="p">))</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">startup</span><span class="p">)</span>
+    <span class="p">}</span> <span class="o">&gt;</span> <span class="n">FLASH</span>
+    <span class="o">.</span><span class="n">rodata</span> <span class="p">:</span> <span class="p">{</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">rodata</span><span class="p">)</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">rodata</span><span class="o">.*</span><span class="p">)</span>
+    <span class="p">}</span> <span class="o">&gt;</span> <span class="n">FLASH</span>
+    <span class="o">.</span><span class="n">data</span> <span class="p">:</span> <span class="p">{</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">sdata</span><span class="p">)</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">sbss</span><span class="p">)</span>
+    <span class="p">}</span> <span class="o">&gt;</span> <span class="n">RAM</span>
+    <span class="o">.</span><span class="n">note</span><span class="o">.</span><span class="n">gnu</span><span class="o">.</span><span class="n">build</span><span class="o">-</span><span class="nb">id</span> <span class="p">:</span> <span class="p">{</span>
+        <span class="o">*</span><span class="p">(</span><span class="o">.</span><span class="n">note</span><span class="o">.</span><span class="n">gnu</span><span class="o">.</span><span class="n">build</span><span class="o">-</span><span class="nb">id</span><span class="p">)</span>
+    <span class="p">}</span> <span class="o">&gt;</span> <span class="n">FLASH</span>
+    <span class="o">/</span><span class="n">DISCARD</span><span class="o">/</span> <span class="p">:</span> <span class="p">{</span><span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="p">)}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Here we use <code class="docutils literal notranslate"><span class="pre">FLASH</span></code> to represent the space for storing the program code
+(which is usually in a flash storage, for real-world SoC chips). <code class="docutils literal notranslate"><span class="pre">.text</span></code> is
+the section for the code, followed by <code class="docutils literal notranslate"><span class="pre">.rodata</span></code> (read-only data) and <code class="docutils literal notranslate"><span class="pre">.data</span></code>
+(read-write initialized data). With the linker script, the compiled program
+will start from our reset vector and utilize the available memory space
+correctly.</p>
+</li>
+<li><p>(optional) link with some helper libraries: <code class="docutils literal notranslate"><span class="pre">mriscv.c</span></code>
+implements some helper functions to make development easier (such as <code class="docutils literal notranslate"><span class="pre">uprintf</span></code>).</p></li>
+</ul>
+<p>The output file from the compiler/linker, though, is in ELF-format, which is
+the common format for Linux binaries. The format should not be part of our
+final image to be loaded on the processor. Thus, we need to extract its “pure”
+content to have the image which only contains code and necessary data:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>// ... in apps/Makefile
+$(OBJCOPY) -O binary -j .text -j .rodata -j .data $&lt; $@
+</pre></div>
+</div>
 </div>
 <div class="section" id="priting-to-the-console">
 <h3>Priting to the Console<a class="headerlink" href="#priting-to-the-console" title="Permalink to this headline">¶</a></h3>
