@@ -19,7 +19,7 @@
 
 project = 'mriscv'
 copyright = '2021, Ted Yin'
-author = 'Ted Yin'
+author = 'Ted Yin <tederminant@gmail.com>'
 
 
 # -- General configuration ---------------------------------------------------
