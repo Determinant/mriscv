@@ -130,4 +130,4 @@ Memory Map
 - ``0x00100000`` -- ``0x001fffff``: program ("FLASH", 1MB)
 - ``0x00200000`` -- ``0x021fffff``: RAM (32MB)
 - ``0x02200000`` -- ``0x0fffffff``: (reserved)
-- ``0x10000000`` -- ``0x1004ffff``: video framebuffer (320K, RGB222, 1bpp)
+- ``0x10000000`` -- ``0x1004ffff``: video framebuffer (320K, RGB222, 640x480, 1 byte per pixel)

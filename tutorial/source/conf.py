@@ -56,6 +56,7 @@ html_sidebars = {
         'localtoc.html',
         'searchbox.html']
 }
+
 html_theme_options = {
     'sidebar_width': '280px',
     'page_width': '1000px',

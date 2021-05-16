@@ -25,10 +25,10 @@ toolchains and directly run on the processor.
 
 The whole repo is simply divided into three parts:
 
-- Processor core implementation in SystemVerilog: ``core.sv`` (1.2K loc) and
-  ``csr.sv`` (182 loc).
+- Processor core implementation in SystemVerilog: `core.sv`_ (1.2K loc) and
+  `csr.sv`_ (182 loc).
 
-- System emulator: ``sim.cpp`` (423 loc).
+- System emulator: `sim.cpp`_ (423 loc).
 
 - Example applications that directly runs on ``sim``: ``apps/*.c`` and
   ``apps/mriscv-rs/examples/*.rs``.
@@ -38,3 +38,7 @@ core with SystemVerilog and the building of the final system/applications.
 
 .. include:: processor.rst
 .. include:: system.rst
+
+.. _core.sv: https://github.com/Determinant/mriscv/blob/main/core.sv
+.. _csr.sv: https://github.com/Determinant/mriscv/blob/main/csr.sv
+.. _sim.cpp: https://github.com/Determinant/mriscv/blob/main/sim.cpp
