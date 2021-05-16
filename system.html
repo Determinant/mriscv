@@ -29,8 +29,8 @@
   <ul>
 <li><a class="reference internal" href="#">Emulate a Realistic SoC environment</a><ul>
 <li><a class="reference internal" href="#no-longer-a-toy-starting-up-a-compiled-program">No Longer a “Toy”: Starting up a compiled program</a></li>
-<li><a class="reference internal" href="#priting-to-the-console">Priting to the Console</a></li>
-<li><a class="reference internal" href="#timer-event-and-a-basic-library">Timer, Event and a Basic Library</a></li>
+<li><a class="reference internal" href="#printing-to-the-console">Printing to the Console</a></li>
+<li><a class="reference internal" href="#timer-keyboard-video-and-a-useful-library">Timer, Keyboard, Video and a Useful Library</a></li>
 <li><a class="reference internal" href="#a-snake-game">A Snake Game</a></li>
 </ul>
 </li>
@@ -87,7 +87,7 @@ some wrapping peripheral circuits to signal <code class="docutils literal notran
 pin (could be grounded if no external interrupts are needed) properly.  It is
 also possible to make it “semi-hosted” by some commercial tool so that
 cache/memory can be emulated on our host computer, while the core runs entirely on an
-FPGA.  Here we use <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code> as an example, which emulates both the core
+FPGA.  Here we use <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/sim.cpp">sim.cpp</a> as an example, which emulates both the core
 logic and peripherals on the computer, with the help of Verilator.  Verilator
 can compile the SystemVerilog code into standalone C++ code with optimized,
 parallelized emulation and thus gives a usable RISC-V computer emulated in
@@ -115,7 +115,7 @@ powered on);</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dcache_*</span></code>: data cache, we can simply emulate the entire memory that allows some
 configurable delay in response.</p></li>
 </ul>
-<p>In <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code>, we implement our entire SoC-like system in a <code class="docutils literal notranslate"><span class="pre">SoC</span></code> struct:</p>
+<p>In <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/sim.cpp">sim.cpp</a>, we implement our entire SoC-like system in a <code class="docutils literal notranslate"><span class="pre">SoC</span></code> struct:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">struct</span> <span class="nc">SoC</span> <span class="p">{</span>
     <span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Vcore</span><span class="o">&gt;</span> <span class="n">core</span><span class="p">;</span>
     <span class="n">SimulatedRAM</span> <span class="n">ram</span><span class="p">;</span>
@@ -139,12 +139,12 @@ rising edge and also evaluate the core processor given its current pin levels:</
 <p>Each clock cycle of the processor is done by two emulation ticks, so we
 alternate the <code class="docutils literal notranslate"><span class="pre">core-&gt;clock</span></code> pin between 0 and 1 when we advance the emulation
 in the main emulation loop:</p>
-<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (in struct Soc)</span>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (in struct SoC)</span>
     <span class="kt">void</span> <span class="nf">next_tick</span><span class="p">()</span> <span class="p">{</span>
         <span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span> <span class="o">=</span> <span class="o">!</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span><span class="p">;</span>
         <span class="n">tick</span><span class="p">();</span>
     <span class="p">}</span>
-<span class="c1">// ... (in struct Soc)</span>
+<span class="c1">// ... (in struct SoC)</span>
 <span class="c1">// emulation main loop</span>
 <span class="k">while</span> <span class="p">(</span><span class="o">!</span><span class="n">Verilated</span><span class="o">::</span><span class="n">gotFinish</span><span class="p">())</span> <span class="p">{</span>
     <span class="n">soc</span><span class="p">.</span><span class="n">next_tick</span><span class="p">();</span>
@@ -153,7 +153,7 @@ in the main emulation loop:</p>
 </pre></div>
 </div>
 <p>A hardware reset is needed before we start the main loop:</p>
-<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (in struct Soc)</span>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (in struct SoC)</span>
     <span class="kt">void</span> <span class="nf">reset</span><span class="p">()</span> <span class="p">{</span>
         <span class="n">core</span><span class="o">-&gt;</span><span class="n">clock</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
         <span class="n">core</span><span class="o">-&gt;</span><span class="n">reset</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
@@ -164,7 +164,7 @@ in the main emulation loop:</p>
 
         <span class="n">core</span><span class="o">-&gt;</span><span class="n">reset</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
     <span class="p">}</span>
-<span class="c1">// ... (in struct Soc)</span>
+<span class="c1">// ... (in struct SoC)</span>
 <span class="c1">// reset before the main loop</span>
 <span class="n">soc</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span>
 </pre></div>
@@ -176,7 +176,7 @@ should be at upon a hardware reset (aka. <em>reset vector</em>), and it is usual
 the specification of the chip product. For example, Intel uses <code class="docutils literal notranslate"><span class="pre">0xfffffff0</span></code>
 for all its x86 processors when they reset in the “real-mode” (the real-mode is
 introduced for backward compatibility to the earliest
-8086 chip, of later products). In <code class="docutils literal notranslate"><span class="pre">core.sv</span></code>, our reset vector is at <code class="docutils literal notranslate"><span class="pre">0x100000</span></code>:</p>
+8086 chip, of later products). In <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/core.sv">core.sv</a>, our reset vector is at <code class="docutils literal notranslate"><span class="pre">0x100000</span></code>:</p>
 <div class="highlight-verilog notranslate"><div class="highlight"><pre><span></span><span class="cp">`define PC_RESET        32&#39;h00100000</span>
 <span class="c1">// ...</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">ctrl_reset</span><span class="p">)</span> <span class="k">begin</span>
@@ -209,13 +209,13 @@ the content of a binary file to a specific memory location:</p>
 <span class="o">./</span><span class="n">sim</span> <span class="o">-</span><span class="n">l</span> <span class="n">apps</span><span class="o">/</span><span class="n">hello</span><span class="o">.</span><span class="n">bin</span><span class="o">=</span><span class="mh">0x100000</span>
 </pre></div>
 </div>
-<p>So far we’ve figured out (and you should read the code in <code class="docutils literal notranslate"><span class="pre">sim.cpp</span></code>) how to let a processor load and run a
+<p>So far we’ve figured out (and you should read the code in <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/sim.cpp">sim.cpp</a>) how to let a processor load and run a
 program in its “raw” (machine code) form. Although one can write a program with
 pure machine code and it works in theory, as human beings, we would appreciate
 writing in a high-level language such as C/Rust, and compile the program down to
 the binary code (called “firmware”, or “image”) to be more efficient both in
 terms of our coding and the program’s execution. Let’s figure out how to get a
-standard gcc compiler (the Rust example is under <code class="docutils literal notranslate"><span class="pre">apps/mriscv-rs</span></code>, which shares the
+standard gcc compiler (the Rust example is under <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv-rs/">apps/mriscv-rs</a>, which shares the
 linker script with the C apps) to do the job for you, which may also
 help you develop more understanding in hardware/software interface.</p>
 <p>There’re mainly three keywords here: <em>toolchain</em>, <em>linkage</em> and <em>startup</em>. Assuming we’re working
@@ -223,7 +223,7 @@ on a <em>host</em> computer with x86-64 CPU for this project, we need a compiler
 runs on 64-bit x86 ISA, but outputs programs that run on 32-bit RISC-V processor.
 Compiling a program to its binary may need multiple tools (compiler,
 linker, binutils) in such a <em>cross-compilation</em> procedure, and the set of necessary
-tools is called a toolchain. In our <code class="docutils literal notranslate"><span class="pre">apps/</span></code> directory, you’ll find the use of a
+tools is called a toolchain. In our <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/">apps/</a> directory, you’ll find the use of a
 <code class="docutils literal notranslate"><span class="pre">RV32I</span></code> toolchain in <code class="docutils literal notranslate"><span class="pre">Makefile</span></code>.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>GCC_TOOLCHAIN = ./rv32i/
 CC = $(GCC_TOOLCHAIN)/bin/riscv32-unknown-elf-gcc
@@ -323,7 +323,7 @@ the section for the code, followed by <code class="docutils literal notranslate"
 will start from our reset vector and utilize the available memory space
 correctly.</p>
 </li>
-<li><p>(optional) link with some helper libraries: <code class="docutils literal notranslate"><span class="pre">mriscv.c</span></code>
+<li><p>(optional) link with some helper libraries: <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv.c">mriscv.c</a>
 implements some helper functions to make development easier (such as <code class="docutils literal notranslate"><span class="pre">uprintf</span></code>).</p></li>
 </ul>
 <p>The output file from the compiler/linker, though, is in ELF-format, which is
@@ -335,14 +335,248 @@ $(OBJCOPY) -O binary -j .text -j .rodata -j .data $&lt; $@
 </pre></div>
 </div>
 </div>
-<div class="section" id="priting-to-the-console">
-<h2>Priting to the Console<a class="headerlink" href="#priting-to-the-console" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="printing-to-the-console">
+<h2>Printing to the Console<a class="headerlink" href="#printing-to-the-console" title="Permalink to this headline">¶</a></h2>
+<p>So far, although our processor can run programs, it is somewhat “useless” because we cannot
+even get the output from a program. Also for the purpose of debugging, we would
+like something similar to <code class="docutils literal notranslate"><span class="pre">printf</span></code> in our C code (<code class="docutils literal notranslate"><span class="pre">print!</span></code> in Rust) that can directly output
+formatted string to the console. How does an SoC achieve this
+realistically, as it doesn’t have a built-in display/keyboard? The short answer is
+<em>serial</em> communication (which is tied to the terms like “tty” and “console” for a PC, or an old mainframe server).</p>
+<p>Modern micro-controllers support ways to both flash (“program”) the program
+into the chip’s ROM, and establish console I/O from the ROM firmware while it is
+running. A very pervasive interface is Universal Asynchronous
+Receiver-Transmitter (UART). The basic hardware logic is to first serialize
+data (a byte) using a shift register and then transmit bits via asynchronous
+serial signals. The data received will be reassembled from the shift
+register at the recipient back into a byte. On a micro-controller (such as those
+common Arm Cortex chips manufactured by STMicroelectronics and RISC-V chips produced by
+SiFive, according to the author’s limited knowledge), the UART communication is
+done by writing to or reading from some <em>memory-mapped</em> special “registers”.
+Unlike the general or CSR registers we use directly as part of the ISA instructions, these
+registers can be more viewed as special (word-aligned) memory locations with which one can communicate
+to the processor. Because these memory locations are special in their
+semantics, one should use the <code class="docutils literal notranslate"><span class="pre">volatile</span></code> keyword when access them in a C program, to
+avoid incorrect optimization by the compiler.</p>
+<p>We use a custom, but very typical register interface for emulated UART (only
+the transmitter, i.e., output) as below:</p>
+<ul class="simple">
+<li><p>the UART transmitter register address: <code class="docutils literal notranslate"><span class="pre">0x1000</span></code>;</p></li>
+<li><p>when the processor writes to the register: the low 8-bit content of the
+written word is transmitted from the processor, and will be printed to the
+emulator’s console;</p></li>
+<li><p>when the processor reads from the register: the value will be 0 only when the
+previous transmission is finished.</p></li>
+</ul>
+<p>Therefore, we just need the following code to implement the emulator side:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="k">const</span> <span class="kt">uint32_t</span> <span class="n">uart_txdata_addr</span> <span class="o">=</span> <span class="mh">0x00001000</span><span class="p">;</span>
+<span class="c1">// ... (in `eval_posedge()` of `SimulatedRAM`</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">addr</span> <span class="o">==</span> <span class="n">uart_txdata_addr</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">dcache_wr</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">debug</span><span class="p">(</span><span class="s">&quot;dcache: write uart = %02x</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">addr</span><span class="p">,</span> <span class="n">data</span><span class="p">);</span>
+        <span class="n">putchar</span><span class="p">((</span><span class="kt">uint8_t</span><span class="p">)</span><span class="n">data</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">dcache_rdata</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">debug</span><span class="p">(</span><span class="s">&quot;dcache: read uart = %02x</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">core</span><span class="o">-&gt;</span><span class="n">dcache_rdata</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="c1">// ...</span>
+</pre></div>
 </div>
-<div class="section" id="timer-event-and-a-basic-library">
-<h2>Timer, Event and a Basic Library<a class="headerlink" href="#timer-event-and-a-basic-library" title="Permalink to this headline">¶</a></h2>
+<p>, and then we can implement <code class="docutils literal notranslate"><span class="pre">putchar</span></code> and <code class="docutils literal notranslate"><span class="pre">print</span></code> functions as part of the
+library (<a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv.c">mriscv.c</a>) for our programs:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="k">static</span> <span class="kt">uint32_t</span> <span class="o">*</span> <span class="k">volatile</span> <span class="k">const</span> <span class="n">__attribute__</span> <span class="p">((</span><span class="n">used</span><span class="p">))</span> <span class="n">UART_TXDATA</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint32_t</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x00001000</span><span class="p">;</span>
+<span class="c1">// ...</span>
+<span class="kt">int</span> <span class="nf">putchar</span><span class="p">(</span><span class="kt">int</span> <span class="n">c</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">while</span> <span class="p">((</span><span class="o">*</span><span class="n">UART_TXDATA</span><span class="p">)</span> <span class="o">&gt;&gt;</span> <span class="mi">31</span><span class="p">)</span> <span class="p">{}</span>
+    <span class="p">(</span><span class="o">*</span><span class="n">UART_TXDATA</span><span class="p">)</span> <span class="o">=</span> <span class="p">((</span><span class="o">*</span><span class="n">UART_TXDATA</span><span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="mh">0xff</span><span class="p">)</span> <span class="o">|</span> <span class="n">c</span><span class="p">;</span>
+    <span class="k">return</span> <span class="n">c</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">size_t</span> <span class="nf">print</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">size_t</span> <span class="n">n</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">putchar</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="k">return</span> <span class="n">n</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Without heap allocation, we can still implement a simplified version of
+<code class="docutils literal notranslate"><span class="pre">sprintf</span></code> — <code class="docutils literal notranslate"><span class="pre">uprintf</span></code> in our library using a (stack-based) preallocated
+array buffer:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// ... (see mriscv.c for the implementation of `int_to_string` and `itoa`)</span>
+<span class="kt">int</span> <span class="nf">uprintf</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">buff</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fmt</span><span class="p">,</span> <span class="p">...)</span> <span class="p">{</span>
+    <span class="kt">size_t</span> <span class="n">nwrote</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="kt">va_list</span> <span class="n">ap</span><span class="p">;</span>
+    <span class="n">va_start</span><span class="p">(</span><span class="n">ap</span><span class="p">,</span> <span class="n">fmt</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">p</span> <span class="o">=</span> <span class="n">fmt</span><span class="p">;</span> <span class="o">*</span><span class="n">p</span> <span class="o">!=</span> <span class="sc">&#39;\0&#39;</span><span class="p">;</span> <span class="n">p</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">*</span><span class="n">p</span> <span class="o">==</span> <span class="sc">&#39;%&#39;</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">p</span><span class="o">++</span><span class="p">;</span>
+            <span class="k">switch</span> <span class="p">(</span><span class="o">*</span><span class="n">p</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">case</span> <span class="sc">&#39;s&#39;</span><span class="o">:</span>
+                    <span class="n">nwrote</span> <span class="o">+=</span> <span class="n">print</span><span class="p">(</span><span class="n">va_arg</span><span class="p">(</span><span class="n">ap</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="p">));</span>
+                    <span class="k">break</span><span class="p">;</span>
+                <span class="k">case</span> <span class="sc">&#39;d&#39;</span><span class="o">:</span>
+                    <span class="n">itoa</span><span class="p">(</span><span class="n">va_arg</span><span class="p">(</span><span class="n">ap</span><span class="p">,</span> <span class="kt">int</span><span class="p">),</span> <span class="n">buff</span><span class="p">);</span>
+                    <span class="n">nwrote</span> <span class="o">+=</span> <span class="n">print</span><span class="p">(</span><span class="n">buff</span><span class="p">);</span>
+                    <span class="k">break</span><span class="p">;</span>
+                <span class="k">case</span> <span class="sc">&#39;u&#39;</span><span class="o">:</span>
+                    <span class="n">int_to_string</span><span class="p">(</span><span class="n">va_arg</span><span class="p">(</span><span class="n">ap</span><span class="p">,</span> <span class="kt">unsigned</span><span class="p">),</span> <span class="n">buff</span><span class="p">,</span> <span class="nb">false</span><span class="p">,</span> <span class="nb">false</span><span class="p">,</span> <span class="mi">10</span><span class="p">);</span>
+                    <span class="n">nwrote</span> <span class="o">+=</span> <span class="n">print</span><span class="p">(</span><span class="n">buff</span><span class="p">);</span>
+                    <span class="k">break</span><span class="p">;</span>
+                <span class="k">case</span> <span class="sc">&#39;x&#39;</span><span class="o">:</span>
+                    <span class="n">int_to_string</span><span class="p">(</span><span class="n">va_arg</span><span class="p">(</span><span class="n">ap</span><span class="p">,</span> <span class="kt">unsigned</span><span class="p">),</span> <span class="n">buff</span><span class="p">,</span> <span class="nb">false</span><span class="p">,</span> <span class="nb">false</span><span class="p">,</span> <span class="mi">16</span><span class="p">);</span>
+                    <span class="n">nwrote</span> <span class="o">+=</span> <span class="n">print</span><span class="p">(</span><span class="n">buff</span><span class="p">);</span>
+                    <span class="k">break</span><span class="p">;</span>
+                <span class="k">case</span> <span class="sc">&#39;X&#39;</span><span class="o">:</span>
+                    <span class="n">int_to_string</span><span class="p">(</span><span class="n">va_arg</span><span class="p">(</span><span class="n">ap</span><span class="p">,</span> <span class="kt">unsigned</span><span class="p">),</span> <span class="n">buff</span><span class="p">,</span> <span class="nb">false</span><span class="p">,</span> <span class="nb">true</span><span class="p">,</span> <span class="mi">16</span><span class="p">);</span>
+                    <span class="n">nwrote</span> <span class="o">+=</span> <span class="n">print</span><span class="p">(</span><span class="n">buff</span><span class="p">);</span>
+                    <span class="k">break</span><span class="p">;</span>
+                <span class="k">case</span> <span class="sc">&#39;%&#39;</span><span class="o">:</span>
+                    <span class="n">putchar</span><span class="p">(</span><span class="sc">&#39;%&#39;</span><span class="p">);</span>
+                    <span class="n">nwrote</span><span class="o">++</span><span class="p">;</span>
+                    <span class="k">break</span><span class="p">;</span>
+                <span class="k">default</span><span class="o">:</span>
+                    <span class="n">va_end</span><span class="p">(</span><span class="n">ap</span><span class="p">);</span>
+                    <span class="k">return</span> <span class="mi">-1</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="n">putchar</span><span class="p">(</span><span class="o">*</span><span class="n">p</span><span class="p">);</span>
+            <span class="n">nwrote</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">va_end</span><span class="p">(</span><span class="n">ap</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">nwrote</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Then we can write our “hello world” program in C (<a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/hello.c">apps/hello.c</a>):</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span> <span class="cpf">&quot;mriscv.h&quot;</span><span class="cp"></span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kt">char</span> <span class="n">buff</span><span class="p">[</span><span class="mi">32</span><span class="p">];</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">-5</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">uprintf</span><span class="p">(</span><span class="n">buff</span><span class="p">,</span> <span class="s">&quot;Hello, world! %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+    <span class="n">print</span><span class="p">(</span><span class="n">buff</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>which outputs formatted strings correctly:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ ./sim -l apps/hello.bin=0x100000
+Hello, world! -5
+Hello, world! -4
+Hello, world! -3
+Hello, world! -2
+Hello, world! -1
+Hello, world! 0
+Hello, world! 1
+Hello, world! 2
+Hello, world! 3
+Hello, world! 4
+</pre></div>
+</div>
+<p>We next implement similar functions in Rust. Thanks to Rust’s powerful macro
+system, one can print formatted strings more ergonomically (a shrinked
+version of <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv-rs/examples/hello.rs">apps/mriscv-rs/examples/hello.rs</a>):</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="cp">#![no_std]</span><span class="w"></span>
+<span class="cp">#![no_main]</span><span class="w"></span>
+
+<span class="k">extern</span><span class="w"> </span><span class="k">crate</span><span class="w"> </span><span class="n">mriscv</span><span class="p">;</span><span class="w"></span>
+<span class="k">extern</span><span class="w"> </span><span class="k">crate</span><span class="w"> </span><span class="n">panic_halt</span><span class="p">;</span><span class="w"></span>
+<span class="k">use</span><span class="w"> </span><span class="n">core</span>::<span class="n">fmt</span>::<span class="n">Write</span><span class="p">;</span><span class="w"></span>
+<span class="k">use</span><span class="w"> </span><span class="n">mriscv</span>::<span class="p">{</span><span class="n">uprint</span><span class="p">,</span><span class="w"> </span><span class="n">uprintln</span><span class="p">};</span><span class="w"></span>
+<span class="k">use</span><span class="w"> </span><span class="n">riscv_rt</span>::<span class="n">entry</span><span class="p">;</span><span class="w"></span>
+
+<span class="cp">#[entry]</span><span class="w"></span>
+<span class="k">fn</span> <span class="nf">main</span><span class="p">()</span><span class="w"> </span>-&gt; <span class="o">!</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">uprintln</span><span class="o">!</span><span class="p">(</span><span class="s">&quot;hello, world! Count from 10:&quot;</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">0</span><span class="o">..</span><span class="mi">10</span><span class="w"> </span><span class="p">}.</span><span class="n">rev</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="n">uprintln</span><span class="o">!</span><span class="p">(</span><span class="s">&quot;now it is {}...&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="n">mriscv</span>::<span class="n">wfi_loop</span><span class="p">();</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="timer-keyboard-video-and-a-useful-library">
+<h2>Timer, Keyboard, Video and a Useful Library<a class="headerlink" href="#timer-keyboard-video-and-a-useful-library" title="Permalink to this headline">¶</a></h2>
+<p>We would like to introduce more useful library functions before we write
+something more complex in Rust. In <a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv-rs/src">apps/mriscv-rs/src/</a>, there are
+implementations for:</p>
+<ul class="simple">
+<li><p>a way to set the timer by writing to the memory-mapped CSR registers;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">uprint!</span></code> and <code class="docutils literal notranslate"><span class="pre">uprintln!</span></code> macros;</p></li>
+<li><p>a heap-less, circular queue, <code class="docutils literal notranslate"><span class="pre">Queue256</span></code>, based on the
+heapless <code class="docutils literal notranslate"><span class="pre">Vec</span></code> provided by <code class="docutils literal notranslate"><span class="pre">heapless</span></code> package;</p></li>
+<li><p>a safe, event-driven abstraction for handling timer, software and external
+interrupts, so an application does not need to define the global interrupt
+handlers and thus adopts a cleaner way (without <code class="docutils literal notranslate"><span class="pre">unsafe</span></code>) to write
+interrupt-driven logic, implemented with the help of <code class="docutils literal notranslate"><span class="pre">Queue256</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">get_framebuffer()</span></code>  for video output.</p></li>
+</ul>
+<p>We use the external interrupt (<code class="docutils literal notranslate"><span class="pre">irq</span></code>) to signal keyboard inputs are
+available, while the actual key code is stored in a memory-mapped register at
+<code class="docutils literal notranslate"><span class="pre">0x3000</span></code>. In the emulator, keyboard events are captured by SDL2 (you need to
+build <code class="docutils literal notranslate"><span class="pre">sim</span></code> with <code class="docutils literal notranslate"><span class="pre">env</span> <span class="pre">ENABLE_SDL=1</span> <span class="pre">make</span></code> to enable this and the video
+support).</p>
+<p>Finally, we use a VESA-framebuffer-like interface to memory-map the video
+framebuffer into <code class="docutils literal notranslate"><span class="pre">0x10000000</span></code>–<code class="docutils literal notranslate"><span class="pre">0x1004ffff</span></code> (320K, RGB222, 640x480, 1 byte per pixel), which
+is rendered to the GUI window on the emulator host.</p>
+<p>The program can update the framebuffer to render some graphics.  An example is
+to randomly draw colored pixels to the entire frame:</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="cp">#![no_std]</span><span class="w"></span>
+<span class="cp">#![no_main]</span><span class="w"></span>
+
+<span class="k">extern</span><span class="w"> </span><span class="k">crate</span><span class="w"> </span><span class="n">panic_halt</span><span class="p">;</span><span class="w"></span>
+<span class="k">use</span><span class="w"> </span><span class="n">rand</span>::<span class="n">Rng</span><span class="p">;</span><span class="w"></span>
+<span class="k">use</span><span class="w"> </span><span class="n">rand</span>::<span class="n">SeedableRng</span><span class="p">;</span><span class="w"></span>
+<span class="k">use</span><span class="w"> </span><span class="n">riscv_rt</span>::<span class="n">entry</span><span class="p">;</span><span class="w"></span>
+
+<span class="k">const</span><span class="w"> </span><span class="n">INTERVAL</span>: <span class="kt">u32</span> <span class="o">=</span><span class="w"> </span><span class="mh">0x1000000</span><span class="p">;</span><span class="w"></span>
+<span class="k">static</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">COUNTER</span>: <span class="kt">usize</span> <span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="k">static</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">RNG</span>: <span class="nb">Option</span><span class="o">&lt;</span><span class="n">rand</span>::<span class="n">rngs</span>::<span class="n">SmallRng</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">None</span><span class="p">;</span><span class="w"></span>
+
+<span class="cp">#[export_name = </span><span class="s">&quot;MachineTimer&quot;</span><span class="cp">]</span><span class="w"></span>
+<span class="k">fn</span> <span class="nf">timer_handler</span><span class="p">(</span><span class="n">_trap_frame</span>: <span class="kp">&amp;</span><span class="nc">riscv_rt</span>::<span class="n">TrapFrame</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">fb</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mriscv</span>::<span class="n">get_framebuffer</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="n">mriscv</span>::<span class="n">set_timer</span><span class="p">(</span><span class="n">INTERVAL</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="mi">0</span><span class="o">..</span><span class="n">fb</span><span class="p">.</span><span class="n">len</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">            </span><span class="n">COUNTER</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"></span>
+<span class="w">            </span><span class="n">fb</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">RNG</span><span class="p">.</span><span class="n">as_mut</span><span class="p">().</span><span class="n">unwrap</span><span class="p">().</span><span class="n">gen</span><span class="p">();</span><span class="w"></span>
+<span class="w">        </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="cp">#[entry]</span><span class="w"></span>
+<span class="k">fn</span> <span class="nf">main</span><span class="p">()</span><span class="w"> </span>-&gt; <span class="o">!</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="n">RNG</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">rand</span>::<span class="n">rngs</span>::<span class="n">SmallRng</span>::<span class="n">from_seed</span><span class="p">([</span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="mi">16</span><span class="p">]));</span><span class="w"></span>
+<span class="w">        </span><span class="n">riscv</span>::<span class="n">register</span>::<span class="n">mstatus</span>::<span class="n">set_mie</span><span class="p">();</span><span class="w"></span>
+<span class="w">        </span><span class="n">mriscv</span>::<span class="n">set_timer</span><span class="p">(</span><span class="n">INTERVAL</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="n">mriscv</span>::<span class="n">wfi_loop</span><span class="p">();</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<p>The frame will be updated every ~16 million cycles (<a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv-rs/examples/video.rs">apps/mriscv-rs/examples/video.rs</a>):</p>
+<a class="reference internal image-reference" href="_images/video.gif"><img alt="_images/video.gif" class="align-center" src="_images/video.gif" style="width: 80%;" /></a>
 </div>
 <div class="section" id="a-snake-game">
 <h2>A Snake Game<a class="headerlink" href="#a-snake-game" title="Permalink to this headline">¶</a></h2>
+<p>With all these ingredients, to end our journey in this tutorial, we finally put
+together a Rust game that is similar to “Snake” in
+<a class="reference external" href="https://github.com/Determinant/mriscv/blob/main/apps/mriscv-rs/examples/snake.rs">apps/mriscv-rs/examples/snake.rs</a> with ~250 lines of code that is nice and clean.
+It takes up/down/left/right inputs from the keyboard and renders the game play
+every “second”:</p>
+<a class="reference internal image-reference" href="https://raw.githubusercontent.com/Determinant/mriscv/main/apps/mriscv-rs/snake.gif"><img alt="https://raw.githubusercontent.com/Determinant/mriscv/main/apps/mriscv-rs/snake.gif" class="align-center" src="https://raw.githubusercontent.com/Determinant/mriscv/main/apps/mriscv-rs/snake.gif" style="width: 90%;" /></a>
 </div>
 </div>
 
