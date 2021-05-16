@@ -1,10 +1,9 @@
-.. mriscv documentation master file, created by
-   sphinx-quickstart on Tue May 11 16:56:19 2021.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. role:: author
 
 Minimum RISC-V System From Scratch
 ==================================
+
+:author:`Ted Yin`
 
 So, we'll make a RISC-V system! It may sound "mission impossible" to build this
 kind of thing from scratch in a relatively short time, without prior background
